@@ -1,0 +1,557 @@
+---
+title: "Data preparation"
+author: "Pablo Knobel"
+date: "11/16/2021"
+output:
+  html_document:
+    toc: true
+    number_sections: true
+    toc_float:
+      collapsed: false
+      smooth_scroll: false
+    theme: united
+---
+
+# Summary
+
+This code does X, Y and Z.
+
+# Set working dirctory
+
+```{r}
+
+# Add WD if needed
+pablo = "C:/Users/knobep01/OneDrive - The Mount Sinai Hospital"
+
+# Change name
+wd = pablo
+```
+
+# Loads
+
+```{r include=FALSE}
+
+# Libraries
+
+library(data.table)
+library(reshape2)
+library(dplyr)
+library(tidyverse)
+library(lubridate)
+library(plyr)
+library(tableone)
+library(sqldf)
+library(sf)
+library(sp)
+library(raster)
+library(rgdal)
+library(zipcodeR)
+library(fst)
+library(dplyr)
+library(zoo)
+
+```
+
+# Initial df
+
+## Set up outcomes df
+
+Load the lab results df. Fix the datatypes.
+
+Prepare a table for each one of the health outcomes and merge them.
+
+```{r}
+#Load df
+labs=fread('C:/Users/knobep01/OneDrive - The Mount Sinai Hospital/glucose_wtc/data/MYS210128_labs.csv',na.strings = "")
+labs$date=as.Date(labs$orderDate,"%m/%d/%Y")
+labs$result=as.numeric(labs$result)
+labs=labs[complete.cases(labs$result)]
+
+#Create outcomes df
+
+#Glucose
+Glucose=subset(labs,test=="Glucose")
+Glucose=subset(Glucose,select=c("extractID","date","result"))
+Glucose=Glucose[!duplicated(Glucose),]
+Glucose=aggregate(result~extractID+date,Glucose,mean)
+setnames(Glucose,"result","glucose")
+
+#Cholesterol
+Cholesterol=subset(labs,test=="Cholesterol")
+Cholesterol=subset(Cholesterol,select=c("extractID","date","result"))
+Cholesterol=Cholesterol[!duplicated(Cholesterol),]
+Cholesterol=aggregate(result~extractID+date,Cholesterol,mean)
+setnames(Cholesterol,"result","Cholesterol")
+
+#HDL
+HDL=subset(labs,test=="HDL cholesterol")
+HDL=subset(HDL,select=c("extractID","date","result"))
+HDL=HDL[!duplicated(HDL),]
+HDL=aggregate(result~extractID+date,HDL,mean)
+setnames(HDL,"result","HDL")
+
+#LDL
+LDL=subset(labs,test=="LDL cholesterol")
+LDL=subset(LDL,select=c("extractID","date","result"))
+LDL=LDL[!duplicated(LDL),]
+LDL=aggregate(result~extractID+date,LDL,mean)
+setnames(LDL,"result","LDL")
+
+#Triglycerides
+Triglycerides=subset(labs,test=="Triglycerides")
+Triglycerides=subset(Triglycerides,select=c("extractID","date","result"))
+Triglycerides=Triglycerides[!duplicated(Triglycerides),]
+Triglycerides=aggregate(result~extractID+date,Triglycerides,mean)
+setnames(Triglycerides,"result","Triglycerides")
+
+#LDL/HDL ratio
+ratio=subset(labs,test=="LDL/HDL cholesterol ratio")
+ratio=subset(ratio,select=c("extractID","date","result"))
+ratio=ratio[!duplicated(ratio),]
+ratio=aggregate(result~extractID+date,ratio,mean)
+setnames(ratio,"result","ratio")
+
+
+
+gluc=join(Cholesterol,Triglycerides,by=c("extractID","date"))
+gluc=join(gluc,HDL,by=c("extractID","date"))
+gluc=join(gluc,LDL,by=c("extractID","date"))
+gluc=join(gluc,Glucose,by=c("extractID","date"))
+gluc=join(gluc,ratio,by=c("extractID","date"))
+
+rm(labs,Glucose,HDL,LDL,ratio,Cholesterol,Triglycerides)
+
+```
+# Add geodata
+```{r}
+geocodes=readRDS("C:/Users/knobep01/OneDrive - The Mount Sinai Hospital/glucose_wtc/data/Processed files/wtc_geocoded_combined.rds")
+
+gluc <- sqldf("select a.*, 
+              b.first_address_date,
+              b.last_address_date
+       from gluc a left join geocodes b
+       on a.extractID = b.extractID and 
+          a.date between 
+              b.first_address_date and
+              b.last_address_date")
+
+gluc=join(gluc,geocodes,by=c("extractID","first_address_date","last_address_date"))
+```
+
+# Covariates
+
+Load and subset df
+
+```{r}
+demog=fread('C:/Users/knobep01/OneDrive - The Mount Sinai Hospital/glucose_wtc/data/MYS210128_Demographics.csv')
+demog=subset(demog, select=c("extractID","dOB","gender","educ_Level_Code","hispanic","income_Category","marital_Stat_Code","race8","Current_Clinic","vis1dt","vis2dt","vis3dt","vis4dt","vis5dt","vis6dt","vis7dt","vis8dt","vis9dt","vis10dt","vis11dt","vis12dt","vis13dt","vis14dt","vis15dt","vis16dt"))
+```
+
+## Education
+
+Recoding education into 4 categories
+
+```{r}
+#1=less than high school, 2=highschool, 3=some college, 4=college or professional school
+demog$edu4=ifelse(demog$educ_Level_Code=="Some High School" | demog$educ_Level_Code=="Elem School",1,
+                 ifelse(demog$educ_Level_Code=="High School Grad",2,
+                        ifelse(demog$educ_Level_Code=="Some College",3,
+                        ifelse(demog$educ_Level_Code=="M",NA,4))))
+```
+Categories: 1 = less than high school, 2 = highschool, 3 = some college, 4 = college or professional school
+
+## Income level
+
+Recoding income into 5 categories.
+```{r}
+demog$income=ifelse(demog$income_Category=="$0-10 000" | demog$income_Category=="$10 001-20 000"| demog$income_Category=="$30 001-40 000",1,
+                   ifelse(demog$income_Category=="$40 001-50 000" | demog$income_Category=="$50 001-60 000"| demog$income_Category=="$60 001-70 000",2,
+                          ifelse(demog$income_Category=="$70 001-80 000" | demog$income_Category=="$80 001-90 000"| demog$income_Category=="$90 001-100 000",3,
+                                 ifelse(demog$income_Category=="$100 001-110 000" | demog$income_Category=="$110 001-120 000"| demog$income_Category=="$120 001-130 000",4,
+                                        ifelse(demog$income_Category=="$130 001-140 000" | demog$income_Category=="$140 001-or above",5,NA)))))
+```
+
+Categories: 1 = 0-40k, 2 = 40k-70k, 3 = 70k-100k, 4 = 100k-130k, 5 = 130k or more.
+
+## Race
+We crate a new race variable that assigns hispanic to observations that do not have other races and change uknowns and empties to NA.
+
+```{r}
+demog$race_new = demog$race8
+demog$race_new=ifelse((demog$race8=="Unknown" | demog$race8=="") & demog$hispanic=="Hispanic", "Hispanic", demog$race8)
+demog$race_new=ifelse(demog$race_new=="Unknown" | demog$race_new=="", NA, demog$race_new)
+
+demog$race=ifelse(demog$race_new=="White or Caucasian",1,
+                 ifelse(demog$race_new=="Black or African American",2,
+                        ifelse(is.na(demog$race_new),NA,3)))
+```
+
+## Marital status
+Recode M into NA
+```{r}
+demog$marital_Stat=ifelse(demog$marital_Stat_Code=="M",NA,demog$marital_Stat_Code)
+```
+
+## Merge with main df
+
+```{r}
+gluc3=join(gluc,demog,by="extractID")
+```
+
+# Dates
+
+I'm using Maayan code here. 
+
+```{r echo=FALSE}
+
+##Match visit dates and number to lab order date
+#Dates
+gluc3$dt1 <- as.Date(gluc3$vis1dt, "%m/%d/%Y")
+gluc3$dt2 <- as.Date(gluc3$vis2dt, "%m/%d/%Y")
+gluc3$dt3 <- as.Date(gluc3$vis3dt, "%m/%d/%Y")
+gluc3$dt4 <- as.Date(gluc3$vis4dt, "%m/%d/%Y")
+gluc3$dt5 <- as.Date(gluc3$vis5dt, "%m/%d/%Y")
+gluc3$dt6 <- as.Date(gluc3$vis6dt, "%m/%d/%Y")
+gluc3$dt7 <- as.Date(gluc3$vis7dt, "%m/%d/%Y")
+gluc3$dt8 <- as.Date(gluc3$vis8dt, "%m/%d/%Y")
+gluc3$dt9 <- as.Date(gluc3$vis9dt, "%m/%d/%Y")
+gluc3$dt10 <- as.Date(gluc3$vis10dt, "%m/%d/%Y")
+gluc3$dt11 <- as.Date(gluc3$vis11dt, "%m/%d/%Y")
+gluc3$dt12 <- as.Date(gluc3$vis12dt, "%m/%d/%Y")
+gluc3$dt13 <- as.Date(gluc3$vis13dt, "%m/%d/%Y")
+gluc3$dt14 <- as.Date(gluc3$vis14dt, "%m/%d/%Y")
+gluc3$dt15 <- as.Date(gluc3$vis15dt, "%m/%d/%Y")
+gluc3$dt16 <- as.Date(gluc3$vis16dt, "%m/%d/%Y")
+
+
+#Find last date
+demog=subset(demog, select=c("extractID","vis1dt", "vis2dt","vis3dt","vis4dt","vis5dt","vis6dt","vis7dt","vis8dt",
+                             "vis9dt","vis10dt","vis11dt","vis12dt","vis13dt","vis14dt","vis15dt","vis16dt"))
+
+
+
+#Find closest visit date
+data_long <- melt(demog,
+                  id.vars=c("extractID"),
+                  variable.name="visit",
+                  value.name="Visitdate")
+
+data_long$Visitdate <- as.Date(data_long$Visitdate, "%m/%d/%Y")
+
+
+z <- lapply(intersect(gluc3$extractID,data_long$extractID),function(id) {
+  d1 <- subset(gluc3,extractID==id)
+  d2 <- subset(data_long,extractID==id)
+  
+  d1$indices <- sapply(d1$date,function(d) which.min(abs(d2$Visitdate - d)))
+  d2$indices <- 1:nrow(d2)
+  
+  merge(d1,d2,by=c('extractID','indices'))
+})
+
+z2 <- do.call(rbind,z)
+z2$indices <- NULL
+
+##Remove all visit dates
+gluc3= z2
+
+##Days differences between lab date and visit date
+gluc3$days_dif=abs(gluc3$date-gluc3$Visitdate)
+gluc3$days_dif_2=ifelse(gluc3$days_dif<=365,0,1)
+
+
+#Visit number
+
+gluc3$visit_Number=ifelse(gluc3$visit=="vis1dt",1,
+                         ifelse(gluc3$visit=="vis2dt",2,
+                                ifelse(gluc3$visit=="vis3dt",3,
+                                       ifelse(gluc3$visit=="vis4dt",4,
+                                              ifelse(gluc3$visit=="vis5dt",5,
+                                                     ifelse(gluc3$visit=="vis6dt",6,
+                                                            ifelse(gluc3$visit=="vis7dt",7,
+                                                                   ifelse(gluc3$visit=="vis8dt",8,
+                                                                          ifelse(gluc3$visit=="vis9dt",9,
+                                                                                 ifelse(gluc3$visit=="vis10dt",10,
+                                                                                        ifelse(gluc3$visit=="vis11dt",11,
+                                                                                               ifelse(gluc3$visit=="vis12dt",12,
+                                                                                                      ifelse(gluc3$visit=="vis13dt",13,
+                                                                                                             ifelse(gluc3$visit=="vis14dt",14,
+                                                                                                                    ifelse(gluc3$visit=="vis15dt",15,16)))))))))))))))
+
+rm(demog,z,z2,data_long,out,out2,out3,l_nt,l_nt_1983,l_eq24,l_dn)
+
+```
+
+# Comorvidities and lifestyle covariates
+
+## Longitudinal conditions
+
+Load and subset df
+
+```{r}
+longi=fread('C:/Users/knobep01/OneDrive - The Mount Sinai Hospital/glucose_wtc/data/MYS210128_LongitudinalConditions.csv',na.strings = "")
+longi=subset(longi, select=c("extractID","copd_1st_midpoint","diab_1st_midpoint","htn_1st_midpoint"))
+
+# Change datatypes
+
+date_vars = longi %>% dplyr::select(contains("midpoint")) #Select variables with dates
+
+for(col in colnames(date_vars)) {
+  longi[[col]] <- as.Date(longi[[col]], "%m/%d/%y")
+}
+```
+
+Merge with main df
+```{r}
+gluc3=join(gluc3,longi,by="extractID")
+
+rm(longi, col, date_vars)
+```
+
+Create new variable: diagnosed in the moment of testing
+
+```{r}
+# Diabetes
+gluc3$diab_diag <- gluc3$diab_1st_midpoint < gluc3$date
+gluc3$diab_diag[is.na(gluc3$diab_diag)] <- 0
+
+# Chronic Obstructive Pulmonary Disease
+gluc3$copd_diag <- gluc3$copd_1st_midpoint < gluc3$date
+gluc3$copd_diag[is.na(gluc3$copd_diag)] <- 0
+
+# High blood pressure
+gluc3$htn_diag <- gluc3$htn_1st_midpoint < gluc3$date
+gluc3$htn_diag[is.na(gluc3$htn_diag)] <- 0
+```
+
+## BMI
+
+Load and subset df
+
+```{r}
+PE=fread('C:/Users/knobep01/OneDrive - The Mount Sinai Hospital/glucose_wtc/data/MYS210128_PE.csv',na.strings = "")
+PE=subset(PE,select=c("extractID","visit_Number","SYSTOLIC_PRESSURE","DIASTOLIC_PRESSURE","PULSE_BPM","PULSE_IRREG","Height_cm","Weight_kg","BMI_LBIN","IRREGRHYTHM" ))
+```
+
+Merge and handle outlyers 
+```{r}
+gluc3=join(gluc3,PE,by=c("extractID","visit_Number"))
+gluc3$bmi=as.numeric(gluc3$BMI_LBIN) 
+
+# Maayan added this two.
+gluc3$bmi=ifelse(gluc3$bmi>47,NA,gluc3$bmi)
+
+rm(PE)
+
+```
+
+## Smoking
+
+This original piece of code was done by Maayan and its rather complex. I generated different variables regarding smokind and comorvidities. We are only interested in the comorvidites. 
+
+```{r}
+
+##Some visits were monitoring visits, other were treatment visits. 
+#First read both files, then combine variables. 
+
+#Merge monitoring visits data:
+monitor=fread('C:/Users/knobep01/OneDrive - The Mount Sinai Hospital/glucose_wtc/data/MYS210128_WebAppMonitoring.csv')
+
+
+monitor$Tobacco=ifelse(monitor$WAMF_04_57=="Yes",1,0)
+monitor$diabetes_monitor=ifelse(monitor$WAMF_04_12=="Yes",1,0)
+monitor$Hypercholesterolemia_monitor=ifelse(monitor$WAMF_04_07=="Yes",1,0)
+monitor$cad_monitor=ifelse(monitor$WAMF_04_02=="Yes",1,0)
+monitor$htn_monitor=ifelse(monitor$WAMF_04_01=="Yes",1,0)
+monitor$copd_monitor=ifelse(monitor$WAMF_02_13=="Yes",1,0)
+
+monitor=subset(monitor,select=c("extractID","visit_number","Tobacco","diabetes_monitor","Hypercholesterolemia_monitor","cad_monitor","htn_monitor","copd_monitor"))
+setnames(monitor,"visit_number","visit_Number")
+
+#Join
+gluc3=join(gluc3,monitor,by=c("extractID","visit_Number"))
+rm(monitor)
+
+#Merge treatment visits data:
+treat=fread('C:/Users/knobep01/OneDrive - The Mount Sinai Hospital/glucose_wtc/data/MYS210128_WebAppTreatment.csv')
+
+treat$Tobacco_treat=ifelse(treat$WAPF_10_57=="Yes",1,0)
+treat$diabetes_treat=ifelse(treat$WAPF_10_12=="Yes",1,0)
+treat$Hypercholesterolemia_treat=ifelse(treat$WAPF_10_07=="Yes",1,0)
+treat$cad_treat=ifelse(treat$WAPF_10_02=="Yes",1,0)
+treat$htn_treat=ifelse(treat$WAPF_10_01=="Yes",1,0)
+treat$copd_treat=ifelse(treat$WAPF_08_13=="Yes",1,0)
+
+
+
+treat=subset(treat,select=c("extractID","trt_visit_date","Tobacco_treat","diabetes_treat","Hypercholesterolemia_treat","cad_treat","htn_treat","copd_treat"))
+
+treat$Visitdate <- as.Date(treat$trt_visit_date, "%m/%d/%Y")
+treat$trt_visit_date=NULL
+
+treat=treat[complete.cases(treat$Visitdate),]
+
+#Remove duplicates
+treat=aggregate(cbind(Tobacco_treat,diabetes_treat,Hypercholesterolemia_treat,cad_treat
+                      ,htn_treat,copd_treat)~extractID+Visitdate,treat,max)
+
+#Join
+gluc3=join(gluc3,treat,by=c("extractID","Visitdate"))
+rm(treat)
+
+
+#Combine data from monitoring and treatment visits
+gluc3$smoking=ifelse(gluc3$Tobacco==1|gluc3$Tobacco_treat==1,1,0)
+gluc3$dm=ifelse(gluc3$diabetes_monitor==1|gluc3$diabetes_treat==1,1,0)
+gluc3$cad=ifelse(gluc3$cad_monitor==1|gluc3$cad_treat==1,1,0)
+gluc3$htn=ifelse(gluc3$htn_monitor==1|gluc3$htn_treat==1,1,0)
+gluc3$Hypercholesterolemia=ifelse(gluc3$Hypercholesterolemia_monitor==1|gluc3$Hypercholesterolemia_treat==1,1,0)
+gluc3$copd=ifelse(gluc3$copd_monitor==1|gluc3$copd_treat==1,1,0)
+
+#RECODE VARIABLES
+gluc3$dbp=as.numeric(gluc3$DIASTOLIC_PRESSURE)
+
+gluc3$sbp=as.numeric(gluc3$SYSTOLIC_PRESSURE)
+
+#Impute missing with 0 (values were only "yes" or missing)
+gluc3$smoking[is.na(gluc3$smoking)] <- 0
+gluc3$dm[is.na(gluc3$dm)] <- 0
+gluc3$cad[is.na(gluc3$cad)] <- 0
+gluc3$htn[is.na(gluc3$htn)] <- 0
+gluc3$Hypercholesterolemia[is.na(gluc3$Hypercholesterolemia)] <- 0
+gluc3$copd[is.na(gluc3$copd)] <- 0
+
+#Cumulative disease status
+gluc3=as.data.table(gluc3)
+gluc3 <- gluc3[order(extractID, visit_Number),]
+gluc3=gluc3[, cum_smoking := cumsum(smoking),by=extractID]
+gluc3=gluc3[,cum_dm:=cumsum(dm),by=extractID]
+gluc3=gluc3[,cum_cad:=cumsum(cad),by=extractID]
+gluc3=gluc3[,cum_htn:=cumsum(htn),by=extractID]
+gluc3=gluc3[,cum_Hypercholesterolemia:=cumsum(Hypercholesterolemia),by=extractID]
+gluc3=gluc3[,cum_copd:=cumsum(copd),by=extractID]
+
+gluc3$cum_smoking=ifelse(gluc3$cum_smoking<=1,gluc3$cum_smoking,1)
+gluc3$cum_dm=ifelse(gluc3$cum_dm<=1,gluc3$cum_dm,1)
+gluc3$cum_cad=ifelse(gluc3$cum_cad<=1,gluc3$cum_cad,1)
+gluc3$cum_htn=ifelse(gluc3$cum_htn<=1,gluc3$cum_htn,1)
+gluc3$cum_Hypercholesterolemia=ifelse(gluc3$cum_Hypercholesterolemia<=1,gluc3$cum_Hypercholesterolemia,1)
+gluc3$cum_copd=ifelse(gluc3$cum_copd<=1,gluc3$cum_copd,1)
+
+```
+
+# Exposures:
+
+## WTC exposures
+
+Load and subset df
+```{r}
+dust=fread('C:/Users/knobep01/OneDrive - The Mount Sinai Hospital/glucose_wtc/data/MYS210128_EAQ.csv',na.strings = "")
+resp=fread('C:/Users/knobep01/OneDrive - The Mount Sinai Hospital/glucose_wtc/data/MYS211216_EAQ.csv',na.strings = "")
+setnames(dust,"extractid","extractID")
+setnames(resp,"extractid","extractID")
+dust=subset(dust,select=c("extractID","EXP4_IMPUTED","EXP4","ArrivalDust" , "EAQ_09_24","EAQ_09_23", "EAQ_09_01", "EAQ_11_01", "EAQ_08_04"))
+
+resp=subset(resp,select=c("extractID","EAQ_15_05"))
+```
+
+
+
+```{r echo=FALSE}
+gluc3=join(gluc3,dust,by="extractID")
+
+# Recode exp4
+gluc3$exp9_11_imp=ifelse(gluc3$EXP4_IMPUTED=="Low",1,ifelse(gluc3$EXP4_IMPUTED=="Intermediate",2,ifelse(gluc3$EXP4_IMPUTED=="High",3,
+                                                                      ifelse(gluc3$EXP4_IMPUTED=="Very High",4,NA))))
+
+# respirators
+gluc3=join(gluc3,resp,by="extractID")
+
+missing = c("M", "Don't know")
+no = c("Didn't wear one", "N")
+gluc3$respirators = ifelse(is.na(gluc3$EAQ_15_05) | gluc3$EAQ_15_05 %in% missing, NA,
+                           ifelse(gluc3$EAQ_15_05 %in% no,0,1 ))
+
+# dust
+missing = c("M", "Don't know")
+no = c( "N")
+
+gluc3$dust = ifelse(is.na(gluc3$EAQ_08_04) | gluc3$EAQ_08_04 %in% missing, NA,
+                           ifelse(gluc3$EAQ_08_04 %in% no,"Not in the day/area",gluc3$EAQ_08_04 ))
+
+
+
+rm(dust,gluc,gluc2,states,ne_1983,mmap.sp,ne,xy_wgs84,xy,us,addresses,geocodes,IDs,nestates)
+```
+
+## PM2.5 and heat exposures
+
+My laptop could ot handle the calculatiosn and Maayan sendedme the files. We are going to merge them.
+
+```{r}
+exposures =readRDS("C:/Users/knobep01/OneDrive - The Mount Sinai Hospital/glucose_wtc/data/Processed files/merged_exposures.rds")
+
+data =join(gluc3,exposures,by=c("date","extractID"))
+
+rm(gluc3, exposures)
+```
+
+# Aditional variables
+
+## Age
+
+```{r}
+str_right <- function(string, n) {
+  substr(string, nchar(string) - (n - 1), nchar(string))
+}
+
+data$yob=str_right(data$dOB, 4)
+data$yob=as.numeric(data$yob)
+
+data$age=data$year-data$yob
+```
+
+## Season
+
+```{r}
+data$month=format(data$date,"%m")
+data$month=as.numeric(data$month)
+
+data$season=ifelse(data$month==12|data$month<=2,1,ifelse(data$month>=3 & data$month<=5,2,
+                                                         ifelse(data$month>=6 & data$month<=8,3,4)))
+
+data$maysep=ifelse(data$month>=5 & data$month<=9,1,0)
+```
+
+## Log transformed outcomes
+
+```{r}
+data$log_glucose=log(data$glucose)
+data$log_Cholesterol=log(data$Cholesterol)
+data$log_Triglycerides=log(data$Triglycerides)
+data$log_HDL=log(data$HDL)
+data$log_LDL=log(data$LDL)
+```
+
+
+## iqr exposures
+
+```{r}
+data$pm_6month_iqr=data$pm_6month/IQR(data$pm_6month, na.rm = TRUE)
+data$tempavg_6month_iqr=data$tempavg_6month/IQR(data$tempavg_6month, na.rm = TRUE)
+```
+
+## Dichotomous outcomes
+
+```{r}
+data$gluc_dich <- ifelse(data$glucose > 200, 1,0)
+data$cho_dich <- ifelse(data$Cholesterol > 200, 1,0)
+```
+
+# Save df
+
+```{r}
+saveRDS(data,"C:/Users/knobep01/OneDrive - The Mount Sinai Hospital/glucose_wtc/data/data2.rds")
+```
+
+
