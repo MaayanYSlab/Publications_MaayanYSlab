@@ -1,0 +1,192 @@
+---
+title: "Step 1.1: Imputation of Biomarkers"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output:
+  html_document:
+    toc: true
+    number_sections: true
+    toc_float:
+      collapsed: false
+      smooth_scroll: false
+    theme: united
+---
+
+# Loads
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+
+# Options
+
+options(scipen = 100)
+set.seed(42)
+
+# Libraries
+
+library(janitor)
+library(dplyr)
+library(ggplot2)
+library(naniar)
+library(tidyr)
+library(mice)
+library(tictoc)
+
+# df
+
+data = readRDS("C:/Users/knobep01/OneDrive - The Mount Sinai Hospital/Pablo/Build_Social_PhenoAge/MSDW/ProcesedFiles/svi_pheno_after_prep2024-05-15.rds")
+
+data <- data %>%
+        clean_names()
+
+
+phenoage_vars <- c("albumin",  "creatinine", "glucose","crp", "lymphocyte", "mcv", "red_cell_distribution_width", "alkaline_phosphatase", "wbc")
+```
+
+# Inital data prep
+
+```{r}
+
+### Change units
+
+data <- data %>%
+  mutate(
+    across(contains("albumin"), ~ . * 10),
+    across(contains("creatinine"), ~ . * 88.4),
+    across(contains("glucose"), ~ . * 0.0555),
+    across(contains("crp"), ~ . * 0.1)
+  )
+
+subset_df <- data[rowSums(!is.na(data[, phenoage_vars])) > 0, ] # Keep only years with at least one lab
+
+pheno_data = subset_df[phenoage_vars]
+
+rm(data)
+
+gc()
+
+```
+
+# Explore missing labs
+
+```{r}
+
+gg_miss_upset(pheno_data, nsets = 9)
+
+```
+
+Remove outlyers, create falgs for NA
+
+```{r}
+
+# Define a function to remove outliers
+remove_outliers <- function(x, na.rm = TRUE, ...) {
+  qnt <- quantile(x, probs = c(0.25, 0.75), na.rm = na.rm, ...)
+  H <- 1.5 * IQR(x, na.rm = na.rm)
+  y <- x
+  y[x < (qnt[1] - H)] <- NA
+  y[x > (qnt[2] + H)] <- NA
+  y
+}
+
+# Create new variables and flags
+pheno_data <- pheno_data %>%
+  mutate(across(everything(), ~ remove_outliers(.))) %>%
+  rowwise() %>%
+  mutate(
+    missing_count = sum(is.na(c_across(everything())))) %>%
+  ungroup() %>%
+  mutate(across(all_of(phenoage_vars), ~ ifelse(is.na(.), 1, 0), .names = "flag_NA_{.col}"))
+
+pheno_data <- pheno_data %>%
+  mutate(subset_only_cpr_lymph_na = missing_count <= 2 & (flag_NA_albumin + flag_NA_creatinine + flag_NA_glucose + flag_NA_mcv + flag_NA_red_cell_distribution_width + flag_NA_alkaline_phosphatase + flag_NA_wbc) == 0)
+
+```
+
+# Save crieteira for being part of the selected df to later subset DFs
+
+```{r}
+
+list_subset_only_cpr_lymph_na = pheno_data$subset_only_cpr_lymph_na
+
+```
+
+# Separate flags and dataset
+
+```{r}
+
+flags = pheno_data[10:20]
+pheno_data = pheno_data[1:9]
+
+```
+
+# Imput with any number of missing
+
+```{r}
+
+tic()
+mice_imputed <- complete(mice(pheno_data, method = "pmm"))
+toc()
+
+
+```
+
+## Imput with any number of missing
+
+```{r}
+
+tic()
+mice_lim_imputed <- complete(mice(pheno_data[list_subset_only_cpr_lymph_na,], method = "pmm"))
+toc()
+
+
+```
+
+# Rebuild df
+
+```{r}
+
+mice_imputed <- mice_imputed %>%
+  rename_with(~ paste0("mice_", .))
+
+pheno_data <- pheno_data %>%
+  rename_with(~ paste0("clean_", .))
+
+data = cbind(subset_df, pheno_data, mice_imputed, flags)
+
+id_lim_data = data[list_subset_only_cpr_lymph_na,c("mrn", "year")]
+
+mice_lim_imputed <- mice_lim_imputed %>%
+  rename_with(~ paste0("mice_lim_", .))
+
+lim_data = cbind(id_lim_data, mice_lim_imputed)
+
+data <- left_join(data, lim_data, by = c("mrn", "year"))
+```
+
+
+# Imputation evaluation
+
+```{r}
+
+for (biomark in phenoage_vars){
+  
+  summary = summary(data[c(paste0("clean_", biomark),
+                          paste0("mice_", biomark),
+                          paste0("mice_lim_", biomark))])
+  print(biomark)
+  print(summary)
+
+}
+
+```
+
+# Save df
+
+```{r}
+
+current_date <- as.character(Sys.Date())
+
+file_name <- paste0("C:/Users/knobep01/OneDrive - The Mount Sinai Hospital/Pablo/Build_Social_PhenoAge/MSDW/ProcesedFiles/svi_phenoage_imputed_", current_date, ".rds")
+
+saveRDS(data, file_name)
+
+```

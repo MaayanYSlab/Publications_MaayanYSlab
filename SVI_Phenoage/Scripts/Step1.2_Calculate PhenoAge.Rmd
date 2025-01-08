@@ -1,0 +1,96 @@
+---
+title: "Step 1.2: Calculate PhenoAge"
+author: "Pablo Knobel"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output:
+  html_document:
+    toc: true
+    number_sections: true
+    toc_float:
+      collapsed: false
+      smooth_scroll: false
+    theme: united
+---
+
+
+# Loads
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+
+# Options
+
+options(scipen = 100)
+
+# Libraries
+
+library(tidyverse)
+library(janitor)
+library(corrplot)
+library(viridis)
+
+# df
+
+data = readRDS("C:/Users/knobep01/OneDrive - The Mount Sinai Hospital/Pablo/Build_Social_PhenoAge/MSDW/ProcesedFiles/svi_phenoage_imputed_2024-05-16.rds")
+
+# Clean names
+
+data <- data %>%
+        clean_names()
+
+vars = c()
+
+vars$pheno = phenoage_vars <- c("albumin",  "creatinine", "glucose","crp", "lymphocyte", "mcv", "red_cell_distribution_width", "alkaline_phosphatase", "wbc")
+
+```
+
+## Calculate phenoage
+
+code from https://rdrr.io/github/dayoonkwon/BioAge/src/R/phenoage_calc.R
+
+```{r}
+
+pref = c("clean_","mice_","mice_lim_")
+
+for (prefix in pref){
+
+  xb_orig = -19.90667 + (-0.03359355 * data[paste0(prefix,"albumin")]) + (0.009506491 * data[paste0(prefix,"creatinine")]) + (0.1953192 *  data[paste0(prefix,"glucose")]) + (0.09536762 * log( data[paste0(prefix,"crp")])) + (-0.01199984 * data[paste0(prefix,"lymphocyte")]) + (0.02676401 * data[paste0(prefix,"mcv")]) + (0.3306156 * data[paste0(prefix,"red_cell_distribution_width")]) + (0.001868778 * data[paste0(prefix,"alkaline_phosphatase")]) + (0.05542406 * data[paste0(prefix,"wbc")]) + (0.08035356 * data$age)
+  
+  m_orig = 1 - (exp((-1.51714 * exp(xb_orig)) / 0.007692696))
+  
+  data[paste0(prefix,"phenoage0")] = ((log(-.0055305 * (log(1 - m_orig))) / .09165) + 141.50225)
+  data[paste0(prefix,"phenoage_advance0")] = data[paste0(prefix,"phenoage0")] - data$age
+  
+}
+
+```
+
+# Comare real vs MICE
+
+```{r}
+
+plot1 <- ggplot() +
+  geom_density(aes(x=data$clean_phenoage_advance0),color="darkblue") + 
+  geom_density(aes(x=data$mice_phenoage_advance0),color="red") + 
+  geom_density(aes(x=data$mice_lim_phenoage_advance0),color="green") + 
+    labs(title="Comparison of Real vs MICE", 
+       x= "phenoage_advance0", 
+       y="Density") +
+  theme_minimal() 
+  
+print(plot1)
+
+```
+
+
+# Save df
+
+```{r}
+
+current_date <- as.character(Sys.Date())
+
+file_name <- paste0("C:/Users/knobep01/OneDrive - The Mount Sinai Hospital/Pablo/Build_Social_PhenoAge/MSDW/ProcesedFiles/svi_phenoage_", current_date, ".rds")
+
+saveRDS(data, file_name)
+
+```
+

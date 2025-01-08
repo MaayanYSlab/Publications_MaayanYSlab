@@ -1,0 +1,809 @@
+---
+title: "Step 2: Statistical Analysis"
+author: "Pablo Knobel"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output:
+  html_document:
+    toc: true
+    number_sections: true
+    toc_float:
+      collapsed: false
+      smooth_scroll: false
+    theme: united
+---
+
+# Loads
+
+We load the data already prepared in another script.
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+
+# Options
+
+options(scipen = 100)
+
+# Set seed
+
+set.seed(42)
+
+# Libraries
+
+library(dplyr)
+library(corrplot)
+library(viridis)
+library(mgcv)
+library(data.table)
+library(ggplot2)
+library(janitor)
+library(qgcomp)
+library(qgcompint)
+library(tictoc)
+library(janitor)
+library(rtf)
+library(tableone)
+library(patchwork)
+
+# load df
+
+data = readRDS("C:/Users/knobep01/OneDrive - The Mount Sinai Hospital/Pablo/Build_Social_PhenoAge/MSDW/ProcesedFiles/svi_phenoage_2024-05-16.rds")
+
+```
+
+# Functions 
+
+Load a few useful functions we will use thruought the script.
+
+```{r}
+
+format_outcomes_column_sp = function(mod,rows,exposure,time){
+  # Extracts rows from a exiting model fit.
+  # Returns a dataframe.
+  # Only works when extracting more than one row.
+  smod=summary(mod)$p.table
+  smod=smod[rows,]
+  smod$exposure=exposure
+  smod$time=time
+  smod<-as.data.table(smod,keep.rownames = TRUE)[]
+  
+  return(smod)
+}
+
+format_outcomes_table = function(table, strata){
+  # Takes an existing dataframe with selected rows from a fit model.
+  # Returns formated dataframe. 
+  
+  # get upper and lower bound
+  table$lower = table$Estimate - qnorm(0.975) * table$`Std. Error`
+  table$upper = table$Estimate + qnorm(0.975) * table$`Std. Error`
+  
+  #table$Estimate <- exp(table$Estimate)
+  #table$lower <- exp(table$lower)
+  #table$upper <- exp(table$upper)
+
+  # add significance
+  table$sig <- ifelse(table$`Pr(>|t|)` < 0.001, "***",
+                    ifelse(table$`Pr(>|t|)` < 0.01, "**",
+                           ifelse(table$`Pr(>|t|)` < 0.05, "*",
+                                  ifelse(table$`Pr(>|t|)` < 0.1, ".",""))))
+  
+  # Round values 
+  table$`Pr(>|t|)` <- round(table$`Pr(>|t|)`, 3)
+  table$Estimate <- round(table$Estimate, 3)
+  table$lower <- round(table$lower, 3)
+  table$upper <- round(table$upper, 3)
+  
+  # Create new column with combined values
+  table[[strata]] <- paste(table$Estimate, "(", table$lower, ";", table$upper, ")", table$sig)
+  
+  # return table
+  return(table)
+  
+}
+
+save_table = function(table, table_save_name){
+  # Saves existing table. Need to specify new name. 
+  rtffile <- RTF(paste("C:/Users/knobep01/OneDrive - The Mount Sinai Hospital/Pablo/Build_Social_PhenoAge/SVI_Pheno/",table_save_name,".doc", sep = ""))
+  addParagraph(rtffile, table)
+  addTable(rtffile, cbind(rownames(table), table))
+  done(rtffile)
+}
+
+
+```
+
+
+
+# Define variable list
+
+Cahnge variable names for ploting
+
+```{r}
+data <- data %>%
+  rename(
+    `Socioeconomic_Status` = rpl_theme1,
+    `Household_Characteristics` = rpl_theme2,
+    `Racial_and_Ethnic_Minority_Status` = rpl_theme3,
+    `Housing_Type_and_Transportation` = rpl_theme4,
+    Overall_SVI = rpl_themes
+  )
+```
+
+We are definig some of the variable lists we will use in the script.
+
+```{r}
+
+phenoage_vars <- c("albumin",  "creatinine", "glucose","crp", "lymphocyte", "mcv", "red_cell_distribution_width", "alkaline_phosphatase", "wbc")
+
+mice_phenoage_vars <- paste0("mice_",phenoage_vars)
+mice_lim_phenoage_vars <- paste0("mice_lim_",phenoage_vars)
+
+
+
+exposures = c("Socioeconomic_Status", "Household_Characteristics", "Racial_and_Ethnic_Minority_Status", "Housing_Type_and_Transportation")
+
+```
+
+A reminder of the SVI themes strucutre.
+
+![SVI Themes](https://www.atsdr.cdc.gov/placeandhealth/svi/documentation/SVI-Variables.png?_=02699)
+
+# Prep dataset
+
+Two steps for data preparation. Create exposure deciles and remove rows with missings in the exposures or covariates.
+
+```{r}
+
+# Keep only rows without missing in relevant variables
+
+required_vars <- c("Overall_SVI", "sex", "race_ethnicity_combined", "insurance_type")
+
+data <- data %>%
+  filter(complete.cases(select(., all_of(required_vars))))
+
+```
+
+Name maping
+
+```{r}
+# Vector of old names
+old_names <- c("Socioeconomic_Status", "Household_Characteristics", "Racial_and_Ethnic_Minority_Status", "Housing_Type_and_Transportation")
+
+# Vector of new names
+new_names <- c("Socioeconomic Status", 
+  "Household Characteristics", "Racial & Ethnic Minority Status", 
+  "Housing Type & Transportation"
+)
+
+# Create a named vector for mapping old names to new names
+name_mapping <- setNames(new_names, old_names)
+```
+
+# Create datasets
+
+Creating three datasets to do the analysis on.
+
+Clean: only using real data.
+
+mice: we imputed all labs
+
+mice_lim: we only imuted CRP and Lymph (when we only show one model its for this dataset)
+
+```{r}
+
+clean_data = data %>%
+  subset(!is.na(clean_phenoage_advance0)) %>%
+  filter(is.finite(clean_phenoage_advance0))
+
+mice_data = data %>%
+  subset(!is.na(mice_phenoage_advance0)) %>%
+  filter(is.finite(mice_phenoage_advance0))
+
+mice_lim_data = data %>%
+  subset(!is.na(mice_lim_phenoage_advance0)) %>%
+  filter(is.finite(mice_lim_phenoage_advance0))
+
+```
+
+# EDA
+
+## Correlations
+
+```{r fig.width=8, fig.height=6}
+
+df_exp = subset(mice_lim_data, select = exposures)
+
+# Rename the variables in the dataframe
+names(df_exp)[names(df_exp) %in% old_names] <- new_names
+
+cor = cor(df_exp, use = 'pairwise.complete.obs')
+
+corrplot(cor, type="upper", method = 'number', col = viridis(10))
+
+tiff("C:/Users/knobep01/OneDrive - The Mount Sinai Hospital/Pablo/Build_Social_PhenoAge/SVI_Pheno/correlations_exposures.tif",res=300,width=7,height=7,unit="in")
+
+corrplot(cor, type="upper", method = 'number', col = viridis(10))
+
+dev.off()
+
+```
+
+## Compare imputation methods
+
+```{r}
+
+plot1 <- ggplot() +
+  geom_density(aes(x=data$clean_phenoage_advance0),color="darkblue") + 
+  geom_density(aes(x=data$mice_phenoage_advance0),color="red") + 
+  geom_density(aes(x=data$mice_lim_phenoage_advance0),color="green") + 
+    labs(title="Comparison of Real vs MICE", 
+       x= "phenoage_advance0", 
+       y="Density") +
+  theme_minimal() 
+  
+print(plot1)
+
+```
+
+
+# qGcomp
+
+DEfinng expousres to go into the mixture (all four themes, not including the overall one)
+
+```{r}
+
+mixture =  c("Socioeconomic_Status", "Household_Characteristics", "Racial_and_Ethnic_Minority_Status", "Housing_Type_and_Transportation")
+
+```
+
+## MICE Limited
+
+```{r}
+
+mod = qgcomp.noboot(mice_lim_phenoage_advance0 ~  
+                       Socioeconomic_Status + Household_Characteristics + Racial_and_Ethnic_Minority_Status + Housing_Type_and_Transportation +
+                      as.factor(sex) + as.factor(race_ethnicity_combined) + as.factor(insurance_type) + as.factor(year),
+                      bayes = TRUE, expnms = mixture, data=mice_lim_data, q=10, family=gaussian())
+
+mod
+
+# Plot
+
+
+#Combine positive and negative weights into one dataframe
+df_both <- data.frame(
+  Weight = c(mod$pos.weights, -mod$neg.weights),
+  Variable = c(names(mod$pos.weights), names(mod$neg.weights)
+))
+
+df_both$shade = ifelse(df_both$Weight > 0, mod$pos.psi, mod$neg.psi )
+
+#Order the dataframe by the absolute value of the Weight
+df_both <- df_both %>%
+  arrange(abs(Weight)) %>%
+  mutate(Variable = factor(Variable, levels = Variable))
+
+#Create the bar plot
+plot = ggplot(df_both, aes(x = Variable, y = Weight, fill = shade)) + 
+  geom_bar(stat = "identity") +
+  scale_fill_gradient(low = "grey99", high = "black", name = "Shade", limits = c(-0.1, 0.5)) +
+  scale_x_discrete(labels = name_mapping) +
+  scale_y_continuous(limits = c(-1, 1)) +
+  coord_flip() +
+  theme_minimal() + 
+  labs(y = "Weight", x = "Variable") + 
+  theme(legend.position = "none",
+        axis.title.x = element_text(size = 24),  # Increase x-axis title size
+        axis.title.y = element_text(size = 24),  # Increase y-axis title size
+        axis.text.x = element_text(size = 10),   # Increase x-axis text size
+        axis.text.y = element_text(size = 20))   # Increase y-axis text size)
+
+plot
+
+
+
+tiff("C:/Users/knobep01/OneDrive - The Mount Sinai Hospital/Pablo/Build_Social_PhenoAge/SVI_Pheno/overall_qGcomp.tif",res=300,width=10,height=7,unit="in")
+
+plot
+
+dev.off()
+
+```
+
+## Effect modification
+
+### Sex
+
+```{r}
+
+mice_lim_data$sex_male<- as.factor(ifelse(mice_lim_data$sex == "Male", 1, 0))
+
+mod_sex = qgcomp.emm.noboot(mice_lim_phenoage_advance0 ~  
+                      Socioeconomic_Status + Household_Characteristics + Racial_and_Ethnic_Minority_Status + Housing_Type_and_Transportation +
+                      as.factor(race_ethnicity_combined) + as.factor(insurance_type) + as.factor(year),
+                      emmvar = "sex_male",
+                      bayes = TRUE, expnms = mixture, data=mice_lim_data, q=10, family=gaussian())
+
+mod_sex
+
+p1 = plot(mod_sex,emmval=0) 
+p2 = plot(mod_sex,emmval=1)
+
+tiff("C:/Users/knobep01/OneDrive - The Mount Sinai Hospital/Pablo/Build_Social_PhenoAge/SVI_Pheno/overall_qGcomp_sex_women.tif",res=300,width=10,height=7,unit="in")
+
+plot(mod,emmval=0)
+
+tiff("C:/Users/knobep01/OneDrive - The Mount Sinai Hospital/Pablo/Build_Social_PhenoAge/SVI_Pheno/overall_qGcomp_sex_men.tif",res=300,width=10,height=7,unit="in")
+
+plot(mod,emmval=1)
+
+dev.off()
+
+```
+
+### Race
+
+```{r}
+
+
+mice_lim_data$race_ethnicity_combined <- ifelse(is.na(mice_lim_data$race_ethnicity_combined), "NA", mice_lim_data$race_ethnicity_combined)
+
+mice_lim_data$race_white<- as.factor(ifelse(mice_lim_data$race_ethnicity_combined == "White", 1, 0))
+
+mod_race = qgcomp.emm.noboot(mice_lim_phenoage_advance0 ~  
+                      Socioeconomic_Status + Household_Characteristics + Racial_and_Ethnic_Minority_Status + Housing_Type_and_Transportation +
+                      as.factor(sex) + as.factor(insurance_type) + as.factor(year),
+                      emmvar = "race_white",
+                      bayes = TRUE, expnms = mixture, data=mice_lim_data, q=10, family=gaussian())
+
+mod_race
+plot(mod_race,emmval=0) 
+plot(mod_race,emmval=1) 
+
+tiff("C:/Users/knobep01/OneDrive - The Mount Sinai Hospital/Pablo/Build_Social_PhenoAge/SVI_Pheno/overall_qGcomp_race_nonwhite.tif",res=300,width=10,height=7,unit="in")
+
+plot(mod,emmval=0)
+
+tiff("C:/Users/knobep01/OneDrive - The Mount Sinai Hospital/Pablo/Build_Social_PhenoAge/SVI_Pheno/overall_qGcomp_sex_white.tif",res=300,width=10,height=7,unit="in")
+
+plot(mod,emmval=1)
+
+dev.off()
+
+```
+
+
+## Interaction plots
+
+```{r}
+
+######## SEX
+
+#### Women
+
+#Combine positive and negative weights into one dataframe
+df_both <- data.frame(
+  Weight = c(mod_sex$pos.weights, -mod_sex$neg.weights),
+  Variable = c(names(mod_sex$pos.weights), names(mod_sex$neg.weights)
+))
+
+df_both$shade = ifelse(df_both$Weight > 0, mod_sex$pos.psi, mod_sex$neg.psi )
+
+#Order the dataframe by the absolute value of the Weight
+df_both <- df_both %>%
+  arrange(abs(Weight)) %>%
+  mutate(Variable = factor(Variable, levels = Variable))
+
+#Create the bar plot
+plot_women = ggplot(df_both, aes(x = Variable, y = Weight, fill = shade)) + 
+  geom_bar(stat = "identity") +
+  scale_fill_gradient(low = "grey99", high = "black", name = "Shade", limits = c(-0.1, 0.5)) +
+  scale_x_discrete(labels = name_mapping) +
+  scale_y_continuous(limits = c(-1, 1)) +
+  coord_flip() +
+  theme_minimal() + 
+  labs(title = "B: Women",y = "Weight", x = "Variable") + 
+  theme(legend.position = "none",
+        axis.title.x = element_text(size = 14),  # Increase x-axis title size
+        axis.title.y = element_text(size = 14),  # Increase y-axis title size
+        axis.text.x = element_text(size = 12),   # Increase x-axis text size
+        axis.text.y = element_text(size = 12))   # Increase y-axis text size)
+
+plot_women
+
+#### Men
+
+#Combine positive and negative weights into one dataframe
+df_both <- data.frame(
+  Weight = c(mod_sex$pos.weights1, -mod_sex$neg.weights1),
+  Variable = c(names(mod_sex$pos.weights1), names(mod_sex$neg.weights1)
+))
+
+df_both$shade = ifelse(df_both$Weight > 0, mod_sex$pos.psi1, mod_sex$neg.psi1 )
+
+#Order the dataframe by the absolute value of the Weight
+df_both <- df_both %>%
+  arrange(abs(Weight)) %>%
+  mutate(Variable = factor(Variable, levels = Variable))
+
+#Create the bar plot
+plot_men = ggplot(df_both, aes(x = Variable, y = Weight, fill = shade)) + 
+  geom_bar(stat = "identity") +
+  scale_fill_gradient(low = "grey99", high = "black", name = "Shade", limits = c(-0.1, 0.5)) +
+  scale_x_discrete(labels = name_mapping) +
+  scale_y_continuous(limits = c(-1, 1)) +
+  coord_flip() +
+  theme_minimal() + 
+  labs(title = "A: Men",y = "Weight", x = "Variable") + 
+  theme(legend.position = "none",
+        axis.title.x = element_text(size = 14),  # Increase x-axis title size
+        axis.title.y = element_text(size = 14),  # Increase y-axis title size
+        axis.text.x = element_text(size = 12),   # Increase x-axis text size
+        axis.text.y = element_text(size = 12))   # Increase y-axis text size)
+
+plot_men
+
+######### RACE
+
+#### nW
+
+#Combine positive and negative weights into one dataframe
+df_both <- data.frame(
+  Weight = c(mod_race$pos.weights, -mod_race$neg.weights),
+  Variable = c(names(mod_race$pos.weights), names(mod_race$neg.weights)
+))
+
+df_both$shade = ifelse(df_both$Weight > 0, mod_race$pos.psi, mod_race$neg.psi )
+
+#Order the dataframe by the absolute value of the Weight
+df_both <- df_both %>%
+  arrange(abs(Weight)) %>%
+  mutate(Variable = factor(Variable, levels = Variable))
+
+#Create the bar plot
+plot_nonW = ggplot(df_both, aes(x = Variable, y = Weight, fill = shade)) + 
+  geom_bar(stat = "identity") +
+  scale_fill_gradient(low = "grey99", high = "black", name = "Shade", limits = c(-0.1, 0.5)) +
+  scale_x_discrete(labels = name_mapping) +
+  scale_y_continuous(limits = c(-1, 1)) +
+  coord_flip() +
+  theme_minimal() + 
+  labs(title = "D: Other racial and ethnic groups", y = "Weight", x = "Variable") + 
+  theme(legend.position = "none",
+        axis.title.x = element_text(size = 14),  # Increase x-axis title size
+        axis.title.y = element_text(size = 14),  # Increase y-axis title size
+        axis.text.x = element_text(size = 12),   # Increase x-axis text size
+        axis.text.y = element_text(size = 12))   # Increase y-axis text size)
+
+plot_nonW
+
+#### White
+
+#Combine positive and negative weights into one dataframe
+df_both <- data.frame(
+  Weight = c(mod_race$pos.weights1, -mod_race$neg.weights1),
+  Variable = c(names(mod_race$pos.weights1), names(mod_race$neg.weights1)
+))
+
+df_both$shade = ifelse(df_both$Weight > 0, mod_race$pos.psi1, mod_race$neg.psi1 )
+
+
+#Order the dataframe by the absolute value of the Weight
+df_both <- df_both %>%
+  arrange(abs(Weight)) %>%
+  mutate(Variable = factor(Variable, levels = Variable))
+
+#Create the bar plot
+plot_white = ggplot(df_both, aes(x = Variable, y = Weight, fill = shade)) + 
+  geom_bar(stat = "identity") +
+  scale_fill_gradient(low = "grey99", high = "black", name = "Shade", limits = c(-0.1, 0.5)) +
+  scale_x_discrete(labels = name_mapping) +
+  scale_y_continuous(limits = c(-1, 1)) +
+  coord_flip() +
+  theme_minimal() + 
+  labs(title = "C: non-Hispanic White", y = "Weight", x = "Variable") + 
+  theme(legend.position = "none",
+        axis.title.x = element_text(size = 14),  # Increase x-axis title size
+        axis.title.y = element_text(size = 14),  # Increase y-axis title size
+        axis.text.x = element_text(size = 12),   # Increase x-axis text size
+        axis.text.y = element_text(size = 12))   # Increase y-axis text size)
+
+plot_white
+
+wrap_plots(plot_women, plot_men, plot_white, plot_nonW)
+
+
+plot_women + plot_men + plot_white + plot_nonW 
+
+tiff("C:/Users/knobep01/OneDrive - The Mount Sinai Hospital/Pablo/Build_Social_PhenoAge/SVI_Pheno/overall_cGcomp_interactions.tif",res=300,width=12,height=7,unit="in")
+
+plot_men + plot_women + plot_white + plot_nonW 
+
+dev.off()
+
+```
+
+# Table 1
+
+Participants
+
+```{r}
+
+# Keep only the first appearance of each mrn
+distinct_data <- mice_lim_data %>%
+  distinct(mrn, .keep_all = TRUE)
+
+# Select variables and define the categorical ones
+listVars <- c("sex","age", "race_ethnicity_combined","insurance_type", "Overall_SVI", "Socioeconomic_Status", "Household_Characteristics", "Racial_and_Ethnic_Minority_Status", "Housing_Type_and_Transportation")
+
+catVars <- c("sex","race_ethnicity_combined","insurance_type")
+
+# Print the table
+table1 <- CreateTableOne(vars = listVars, data = distinct_data, includeNA = TRUE, factorVars = catVars)
+table1 <- print(table1)
+
+# Print the table sex stratified
+table2 <- CreateTableOne(vars = listVars, strata = "sex", data = distinct_data, includeNA = TRUE, factorVars = catVars)
+table2 <- print(table2)
+
+# Print the table race stratified
+table3 <- CreateTableOne(vars = listVars, strata = "race_white", data = distinct_data, includeNA = TRUE, factorVars = catVars)
+table3 <- print(table3)
+
+tables = cbind(table1, table2, table3)
+
+tables
+
+save_table(tables, "table1")
+```
+
+Person Years
+
+```{r}
+
+# Select variables and define the categorical ones
+listVars <- c("Socioeconomic_Status", "Household_Characteristics", "Racial_and_Ethnic_Minority_Status", "Housing_Type_and_Transportation", "Overall_SVI",
+              "mice_lim_albumin","mice_lim_creatinine","mice_lim_glucose","mice_lim_crp", "mice_lim_lymphocyte","mice_lim_mcv", "mice_lim_red_cell_distribution_width", "mice_lim_alkaline_phosphatase","mice_lim_wbc",
+              "mice_lim_phenoage0","mice_lim_phenoage_advance0" )
+
+
+# Print the table
+table1 <- CreateTableOne(vars = listVars, data = mice_lim_data, includeNA = TRUE, factorVars = catVars)
+table1 <- print(table1)
+
+```
+
+Person Years - stratified by sex
+
+```{r}
+
+# Select variables and define the categorical ones
+listVars <- c("rpl_theme1","rpl_theme2","rpl_theme3","rpl_theme4", "rpl_themes",
+              "mice_lim_albumin","mice_lim_creatinine","mice_lim_glucose","mice_lim_crp", "mice_lim_lymphocyte","mice_lim_mcv", "mice_lim_red_cell_distribution_width", "mice_lim_alkaline_phosphatase","mice_lim_wbc",
+              "mice_lim_phenoage0","mice_lim_phenoage_advance0" )
+
+
+# Print the table
+table1 <- CreateTableOne(vars = listVars, strata = "race_white", data = mice_lim_data, includeNA = TRUE, factorVars = catVars)
+table1 <- print(table1)
+
+```
+
+Person Years - stratified by race
+
+```{r}
+
+# Select variables and define the categorical ones
+listVars <- c("rpl_theme1","rpl_theme2","rpl_theme3","rpl_theme4", "rpl_themes",
+              "mice_lim_albumin","mice_lim_creatinine","mice_lim_glucose","mice_lim_crp", "mice_lim_lymphocyte","mice_lim_mcv", "mice_lim_red_cell_distribution_width", "mice_lim_alkaline_phosphatase","mice_lim_wbc",
+              "mice_lim_phenoage0","mice_lim_phenoage_advance0" )
+
+
+# Print the table
+table1 <- CreateTableOne(vars = listVars, strata = "sex", data = mice_lim_data, includeNA = TRUE, factorVars = catVars)
+table1 <- print(table1)
+
+```
+
+## Correlations at baseline
+
+```{r fig.width=8, fig.height=6}
+
+df_exp = subset(distinct_data, select = exposures)
+  
+# Rename the variables in the dataframe
+names(df_exp)[names(df_exp) %in% old_names] <- new_names
+               
+cor = cor(df_exp, use = 'pairwise.complete.obs')
+
+corrplot(cor, type="upper", method = 'number', col = viridis(10))
+
+tiff("C:/Users/knobep01/OneDrive - The Mount Sinai Hospital/Pablo/Build_Social_PhenoAge/SVI_Pheno/correlations_exposures_at_baseline.tif",res=300,width=7,height=7,unit="in")
+
+corrplot(cor, type="upper", method = 'number', col = viridis(10))
+
+dev.off()
+
+```
+
+
+# Sensitivity analysis
+
+DEfinng expousres to go into the mixture (all four themes, not including the overall one)
+
+```{r}
+
+mixture =  c("Socioeconomic_Status", "Household_Characteristics", "Racial_and_Ethnic_Minority_Status", "Housing_Type_and_Transportation")
+
+```
+
+## qgcomp with non-imputed dataset.
+
+```{r}
+
+mod = qgcomp.noboot(mice_lim_phenoage_advance0 ~  
+                       Socioeconomic_Status + Household_Characteristics + Racial_and_Ethnic_Minority_Status + Housing_Type_and_Transportation +
+                      as.factor(sex) + as.factor(race_ethnicity_combined) + as.factor(insurance_type) + as.factor(year),
+                      bayes = TRUE, expnms = mixture, data=clean_data, q=10, family=gaussian())
+
+mod
+plot(mod) 
+
+
+tiff("C:/Users/knobep01/OneDrive - The Mount Sinai Hospital/Pablo/Build_Social_PhenoAge/SVI_Pheno/overall_qGcomp_clean.tif",res=300,width=10,height=7,unit="in")
+
+plot(mod) 
+
+dev.off()
+
+```
+
+## Effect modification
+
+### Sex
+
+```{r}
+
+clean_data$sex_male<- as.factor(ifelse(clean_data$sex == "Male", 1, 0))
+
+mod = qgcomp.emm.noboot(mice_lim_phenoage_advance0 ~  
+                      Socioeconomic_Status + Household_Characteristics + Racial_and_Ethnic_Minority_Status + Housing_Type_and_Transportation +
+                      as.factor(race_ethnicity_combined) + as.factor(insurance_type) + as.factor(year),
+                      emmvar = "sex_male",
+                      bayes = TRUE, expnms = mixture, data=clean_data, q=10, family=gaussian())
+
+mod
+
+p1 = plot(mod,emmval=0) 
+p2 = plot(mod,emmval=1)
+
+tiff("C:/Users/knobep01/OneDrive - The Mount Sinai Hospital/Pablo/Build_Social_PhenoAge/SVI_Pheno/overall_qGcomp_sex_women_clean.tif",res=300,width=10,height=7,unit="in")
+
+plot(mod,emmval=0)
+
+tiff("C:/Users/knobep01/OneDrive - The Mount Sinai Hospital/Pablo/Build_Social_PhenoAge/SVI_Pheno/overall_qGcomp_sex_men_clean.tif",res=300,width=10,height=7,unit="in")
+
+plot(mod,emmval=1)
+
+dev.off()
+
+```
+
+### Race
+
+```{r}
+
+
+clean_data$race_ethnicity_combined <- ifelse(is.na(clean_data$race_ethnicity_combined), "NA", clean_data$race_ethnicity_combined)
+
+clean_data$race_white<- as.factor(ifelse(clean_data$race_ethnicity_combined == "White", 1, 0))
+
+mod = qgcomp.emm.noboot(mice_lim_phenoage_advance0 ~  
+                      Socioeconomic_Status + Household_Characteristics + Racial_and_Ethnic_Minority_Status + Housing_Type_and_Transportation +
+                      as.factor(sex) + as.factor(insurance_type) + as.factor(year),
+                      emmvar = "race_white",
+                      bayes = TRUE, expnms = mixture, data=clean_data, q=10, family=gaussian())
+
+mod
+plot(mod,emmval=0) 
+plot(mod,emmval=1) 
+
+tiff("C:/Users/knobep01/OneDrive - The Mount Sinai Hospital/Pablo/Build_Social_PhenoAge/SVI_Pheno/overall_qGcomp_race_nonwhite_clean.tif",res=300,width=10,height=7,unit="in")
+
+plot(mod,emmval=0)
+
+tiff("C:/Users/knobep01/OneDrive - The Mount Sinai Hospital/Pablo/Build_Social_PhenoAge/SVI_Pheno/overall_qGcomp_sex_white_clean.tif",res=300,width=10,height=7,unit="in")
+
+plot(mod,emmval=1)
+
+dev.off()
+
+```
+## Bootstraped 
+
+### GEOID
+
+```{r}
+tic()
+
+mod = qgcomp.boot(mice_lim_phenoage_advance0 ~  
+                       Socioeconomic_Status + Household_Characteristics + Racial_and_Ethnic_Minority_Status + Housing_Type_and_Transportation +
+                      as.factor(sex) + as.factor(race_ethnicity_combined) + as.factor(insurance_type) + as.factor(year),
+                      bayes = TRUE, id = "geoid",expnms = mixture, data=mice_lim_data, q=10, B=200, seed = 42, family=gaussian())
+
+mod
+
+toc()
+```
+
+### mrn
+
+```{r}
+tic()
+
+mod = qgcomp.boot(mice_lim_phenoage_advance0 ~  
+                       Socioeconomic_Status + Household_Characteristics + Racial_and_Ethnic_Minority_Status + Housing_Type_and_Transportation +
+                      as.factor(sex) + as.factor(race_ethnicity_combined) + as.factor(insurance_type) + as.factor(year),
+                      bayes = TRUE, id = "mrn",expnms = mixture, data=mice_lim_data, q=10, B=200, seed = 42, family=gaussian())
+
+mod
+
+toc()
+```
+
+## Table 1
+
+Participants
+
+```{r}
+
+# Keep only the first appearance of each mrn
+distinct_data <- clean_data %>%
+  distinct(mrn, .keep_all = TRUE)
+
+# Select variables and define the categorical ones
+listVars <- c("sex","age", "race_ethnicity_combined","insurance_type", "Overall_SVI", "Socioeconomic_Status", "Household_Characteristics", "Racial_and_Ethnic_Minority_Status", "Housing_Type_and_Transportation")
+
+catVars <- c("sex","race_ethnicity_combined","insurance_type")
+
+# Print the table
+table1 <- CreateTableOne(vars = listVars, data = distinct_data, includeNA = TRUE, factorVars = catVars)
+table1 <- print(table1)
+
+# Print the table sex stratified
+table2 <- CreateTableOne(vars = listVars, strata = "sex", data = distinct_data, includeNA = TRUE, factorVars = catVars)
+table2 <- print(table2)
+
+# Print the table race stratified
+table3 <- CreateTableOne(vars = listVars, strata = "race_white", data = distinct_data, includeNA = TRUE, factorVars = catVars)
+table3 <- print(table3)
+
+tables = cbind(table1, table2, table3)
+
+tables
+
+save_table(tables, "table1_clean")
+```
+ 
+## Correlations at baseline
+
+```{r fig.width=8, fig.height=6}
+
+df_exp = subset(distinct_data, select = )
+
+# Rename the variables in the dataframe
+names(df_exp)[names(df_exp) %in% old_names] <- new_names
+
+                 
+cor = cor(df_exp, use = 'pairwise.complete.obs')
+
+corrplot(cor, type="upper", method = 'number', col = viridis(10))
+
+tiff("C:/Users/knobep01/OneDrive - The Mount Sinai Hospital/Pablo/Build_Social_PhenoAge/SVI_Pheno/correlations_exposures_at_baseline_clean.tif",res=300,width=7,height=7,unit="in")
+
+corrplot(cor, type="upper", method = 'number', col = viridis(10))
+
+dev.off()
+
+```
+
+

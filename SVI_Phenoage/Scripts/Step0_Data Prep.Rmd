@@ -1,0 +1,249 @@
+---
+title: "Step 0: data preparation"
+author: "Pablo Knobel"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output:
+  html_document:
+    toc: true
+    number_sections: true
+    toc_float:
+      collapsed: false
+      smooth_scroll: false
+    theme: united
+---
+
+# Overview
+
+# Loads
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+
+# Options
+
+options(scipen = 100)
+
+# Libraries
+
+library(dplyr)
+library(tidyr)
+library(lubridate)
+library(janitor)
+library(data.table)
+library(findSVI)
+
+```
+
+# Patients
+
+Load dataframe
+
+```{r}
+
+patient = read.csv("C:/Users/knobep01/OneDrive - The Mount Sinai Hospital/Pablo/Build_Social_PhenoAge/MSDW/patient.csv")
+
+patient <- patient %>%
+  clean_names()
+
+```
+
+Prepare dataframe
+
+```{r}
+
+patient <- patient %>%
+  mutate(
+    # Change null-equivalent factors into NAs
+    across(everything(), ~ na_if(., "NULL")),
+    across(everything(), ~ na_if(., "Unknown")),
+    across(everything(), ~ na_if(., "PATIENT DECLINED")),
+    across(everything(), ~ na_if(., "(null)")),
+    # Convert date columns to appropriate date formats
+    dob = ymd(dob), 
+    deceased_date_epic = as.Date(deceased_date_epic),
+    deceased_date_ssdi = as.Date(deceased_date_ssdi),
+    # Combine deceased dates
+    deceased_date = coalesce(deceased_date_epic, deceased_date_ssdi)
+  )
+
+
+```
+
+# Labs
+
+Load dataframe
+
+````{r}
+
+labs = read.csv("C:/Users/knobep01/OneDrive - The Mount Sinai Hospital/Pablo/Build_Social_PhenoAge/MSDW/labs.csv")
+
+labs <- labs %>%
+  clean_names()
+
+```
+
+Prepare dataframe 
+
+```{r}
+
+# Remove rows containing "GLUCOSE (POCT) BY METER" or "LYMPHOCYTE #"
+
+labs <- labs %>%
+  filter(!grepl("LYMPHOCYTE #", lab_component_name) & !grepl("POC", order_name))
+
+```
+
+Check lyphocite missignness. WILL DELETE.
+
+```{r eval=FALSE, include=FALSE}
+
+multiple_lymphocyte <- labs %>%
+  filter(lab_component_group == "Lymphocyte") %>%
+  group_by(encounter_id) %>%
+  summarize(count = n()) %>%
+  filter(count > 1)
+
+summary(multiple_lymphocyte$count)
+
+
+order_component_counts <- labs %>%
+  group_by(order_name, lab_component_name) %>%
+  summarize(count = n(), .groups = 'drop') %>%
+  arrange(desc(count))
+
+print(order_component_counts)
+
+print(order_component_counts[order_component_counts$lab_component_name == "LYMPHOCYTE %",])
+
+print(order_component_counts[order_component_counts$lab_component_name == "WHITE BLOOD CELL",])
+
+print(order_component_counts[order_component_counts$order_name == "CBC+PLATELET",])
+
+
+	
+
+
+```
+
+Reshape into wide 
+
+```{r}
+
+labs_spread <- labs %>%
+  # Spread the data
+  pivot_wider(
+    id_cols = c("primarymrn", "collection_instant", "encounter_id"),
+    names_from = lab_component_group,
+    values_from = result,
+    values_fn = list(result = list)
+  ) %>%
+  # Apply a function to each column to extract the first element of the list
+  mutate(across(everything(), ~sapply(., function(x) if (length(x) > 0) x[[1]] else NA))) %>%
+  # Extract year 
+  mutate(collection_instant = as.POSIXct(collection_instant, format = "%Y-%m-%d %H:%M:%S"),
+         year = year(collection_instant)) %>%
+  # Drop the "CollectionInstant" and "Encounter_id" columns
+  select(-collection_instant, -encounter_id)
+
+# Define the grouping columns
+grouping_cols <- c("year", "primarymrn")
+
+# Convert non-grouping columns to numeric
+non_grouping_cols <- setdiff(names(labs_spread), grouping_cols)
+labs_spread[non_grouping_cols] <- lapply(labs_spread[non_grouping_cols], as.numeric)
+
+# Convert data frame to data.table
+labs_dt <- as.data.table(labs_spread)
+
+# Calculate the mean for all columns
+labs_dt <- labs_dt[, lapply(.SD, function(x) if (is.numeric(x)) mean(x, na.rm = TRUE) else x), by = grouping_cols]
+
+# Clean up
+rm(labs, labs_spread)
+gc()
+
+```
+
+# SVI
+
+```{r}
+
+tidycensus::census_api_key("c0a3624f34fb76482a64d7077d775860c5a87d98")
+
+year = c(2012:2021)
+state = rep("NY", length(year))
+
+svi  <- find_svi(
+  year = year,
+  state = state,
+  geography = "tract"
+) 
+
+svi <- svi %>%
+  clean_names()
+
+```
+
+# Geo
+
+```{r}
+
+df_geo_zip = read.csv("C:/Users/knobep01/OneDrive - The Mount Sinai Hospital/Pablo/Build_Social_PhenoAge/MSDW/ProcesedFiles/df_geo_block.csv", )
+
+df_geo_zip <- df_geo_zip %>%
+  clean_names()
+
+```
+
+# Merge
+
+```{r}
+
+# Merge geo with patients
+patient = rename(patient, mrn = primarymrn)
+df_geo_zip$mrn = as.character(df_geo_zip$mrn)
+df_geo_zip$year = year(df_geo_zip$date)
+df_merged = left_join(df_geo_zip, patient, by = c("mrn"))
+
+# Labs
+labs_dt = rename(labs_dt, mrn = primarymrn)
+labs_dt$mrn = as.character(labs_dt$mrn)
+df_merged = left_join(df_merged, labs_dt , by = c("mrn", "year")) 
+
+# SVI
+svi$geoid = as.numeric(svi$geoid)
+df_merged <- df_merged %>%
+  mutate(geoid= substr(as.character(geoid), 1, nchar(as.character(geoid)) - 1))
+
+df_merged = left_join(df_merged, svi , by = c("geoid", "year")) 
+
+```
+
+# Keep first combination fo MRN and year 
+
+```{r}
+
+df_merged = df_merged %>% distinct(mrn, year, .keep_all = TRUE) 
+
+```
+
+# Create additional variables
+
+## Age
+
+```{r}
+
+df_merged$age = df_merged$year - year(df_merged$dob)
+
+```
+
+# Save df
+
+```{r}
+
+current_date <- as.character(Sys.Date())
+
+file_name <- paste0("C:/Users/knobep01/OneDrive - The Mount Sinai Hospital/Pablo/Build_Social_PhenoAge/MSDW/ProcesedFiles/svi_pheno_after_prep", current_date, ".rds")
+
+saveRDS(df_merged, file_name)
+
+```
