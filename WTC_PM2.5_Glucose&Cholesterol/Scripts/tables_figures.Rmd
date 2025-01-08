@@ -1,0 +1,1583 @@
+---
+title: "Article tables and figures"
+author: "Pablo Knobel"
+date: "11/22/2021"
+output:
+  html_document:
+    toc: true
+    number_sections: true
+    toc_float:
+      collapsed: false
+      smooth_scroll: false
+    theme: united
+---
+
+```{r set-options, echo=FALSE, cache=FALSE}
+options(width = 10000)
+```
+
+# Loads
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+#libraries
+library(data.table)
+library(plyr)
+library(rtf)
+library(ggplot2)
+library(mgcv)
+library(dplyr)
+library(zoo)
+library(tableone)
+library(lme4)
+library(PerformanceAnalytics)
+library(emmeans)
+library(patchwork)
+library(stringr)
+library(dagitty)
+library(mediation)
+library(lubridate)
+
+options(scipen = 100)
+
+#df
+data =readRDS("../data/data2.rds")
+```
+
+# Functions {.tabset}
+
+## Trim outlyers
+
+```{r}
+trim_outlyers = function(data, var, upper_quant = 0.995){
+  # Removes top values of variable. Returns new variable.
+  # Can provide a specific quantile limit. Default is 0.995.
+  return(ifelse(data[[var]]<=quantile(data[[var]],upper_quant,na.rm=TRUE),data[[var]],NA))
+}
+```
+
+## Create iqr
+
+```{r}
+to_iqr = function(data, var){
+  # Returns variable in IQR increases
+  return(data[[var]]/IQR(data[[var]], na.rm = TRUE))
+}
+```
+
+## Save table
+
+```{r}
+save_table = function(table, table_save_name){
+  # Saves existing table. Need to specify new name. 
+  rtffile <- RTF(paste("../results/",table_save_name,".doc", sep = ""))
+  addParagraph(rtffile, table)
+  addTable(rtffile, cbind(rownames(table), table))
+  done(rtffile)
+}
+```
+
+## Table creation - rows
+
+For reriving more than one row
+
+```{r}
+format_outcomes_column = function(mod,rows,outcome,time){
+  # Extracts rows from a exiting model fit.
+  # Returns a dataframe.
+  # Only works when extracting more than one row. 
+  smod=summary(mod)$p.table # Extract table from model
+  smod=smod[rows,] # Select desired rows
+  smod<-as.data.table(smod,keep.rownames = TRUE)[] # Format as datatable
+  smod$outcome=outcome # Assign outcome row.
+  smod$time=time # Assign timeframe row.
+  
+  return(smod)
+}
+```
+
+For retriving a single row
+
+```{r}
+format_outcomes_column_sp = function(mod,rows,outcome,time){
+  # Extracts rows from a exiting model fit.
+  # Returns a dataframe.
+  # Only works when extracting more than one row.
+  smod=summary(mod)$p.table
+  smod=smod[rows,]
+  smod$outcome=outcome
+  smod$time=time
+  smod<-as.data.table(smod,keep.rownames = TRUE)[]
+  
+  return(smod)
+}
+```
+
+## Table creation - formating ( gaussian)
+
+```{r}
+format_outcomes_table = function(table, strata){
+  # Takes an existing dataframe with selected rows from a fit model.
+  # Returns formated dataframe. 
+  
+  # get upper and lower bound
+  table$lower = table$Estimate - qnorm(0.975) * table$`Std. Error`
+  table$upper = table$Estimate + qnorm(0.975) * table$`Std. Error`
+  
+  if (0 == 1){
+    # exponentiate estimate and bounds
+    table$Estimate <- exp(table$Estimate)
+    table$lower <- exp(table$lower)
+    table$upper <- exp(table$upper)
+    
+    # convert estimate and bounds to percent change
+    table$Estimate <- (table$Estimate - 1) * 100
+    table$lower <- (table$lower - 1) * 100
+    table$upper <- (table$upper - 1) *100
+  }
+  
+  # add significance
+  table$sig <- ifelse(table$`Pr(>|t|)` < 0.001, "***",
+                    ifelse(table$`Pr(>|t|)` < 0.01, "**",
+                           ifelse(table$`Pr(>|t|)` < 0.05, "*",
+                                  ifelse(table$`Pr(>|t|)` < 0.1, ".",""))))
+  
+  # Round values 
+  table$`Pr(>|t|)` <- round(table$`Pr(>|t|)`, 3)
+  table$Estimate <- round(table$Estimate, 2)
+  table$lower <- round(table$lower, 2)
+  table$upper <- round(table$upper, 2)
+  
+  # Create new column with combined values
+  table[[strata]] <- paste(table$Estimate, "(", table$lower, ";", table$upper, ")", table$sig)
+  
+  # return table
+  return(table)
+  
+}
+```
+
+
+## Table creation - formating ( binomial)
+
+```{r}
+format_outcomes_table_bi = function(table, strata){
+  # Takes an existing dataframe with selected rows from a fit model.
+  # Returns formated dataframe. 
+  
+  # get upper and lower bound
+  table$lower = table$Estimate - qnorm(0.975) * table$`Std. Error`
+  table$upper = table$Estimate + qnorm(0.975) * table$`Std. Error`
+  
+  table$Estimate <- exp(table$Estimate)
+  table$lower <- exp(table$lower)
+  table$upper <- exp(table$upper)
+
+  # add significance
+  table$sig <- ifelse(table$`Pr(>|z|)` < 0.001, "***",
+                    ifelse(table$`Pr(>|z|)` < 0.01, "**",
+                           ifelse(table$`Pr(>|z|)` < 0.05, "*",
+                                  ifelse(table$`Pr(>|z|)` < 0.1, ".",""))))
+  
+  # Round values 
+  table$`Pr(>|z|)` <- round(table$`Pr(>|z|)`, 3)
+  table$Estimate <- round(table$Estimate, 2)
+  table$lower <- round(table$lower, 2)
+  table$upper <- round(table$upper, 2)
+  
+  # Create new column with combined values
+  table[[strata]] <- paste(table$Estimate, "(", table$lower, ";", table$upper, ")", table$sig)
+  
+  # return table
+  return(table)
+  
+}
+```
+# Set up
+
+Prepare outcomes
+
+```{r}
+# Remove outlyers
+
+outcomes = c("glucose", "Cholesterol", "Triglycerides", "HDL", "LDL", "sbp", "dbp")
+
+for (var in outcomes){
+  print(var)
+  print(quantile(data[[var]], c(.995), na.rm = TRUE))
+  
+}
+
+for (var in outcomes) {
+  data[[var]] = trim_outlyers(data, var)
+}
+
+# Log transform
+
+for (var in outcomes) {
+  data[[paste("log", var, sep = "_")]] = log(data[[var]])
+}
+
+# Create variable yes/no in WTC on 9/11
+
+data$arr_9_11 = ifelse(data$EAQ_09_01 == "2001-09-11",1,0)
+
+data$EAQ_09_24_10h = data$EAQ_09_24 /10
+```
+
+Prepare exposures 
+
+```{r}
+
+# Create exp 9 11 3 groups (combine 3 and 4)
+
+data$exp_9_11_comb34 = ifelse(data$exp9_11_imp == 4, 3, data$exp9_11_imp)
+
+#Create iqr exposure variables
+
+exposures = c("pm_7day","tempavg_7day","pm_3month","tempavg_3month","pm_6month","tempavg_6month")
+
+for (var in exposures){
+  data[[paste(var,"iqr", sep = "_")]] = to_iqr(data, var)
+}
+```
+
+Subsets of main dataframe
+
+```{r}
+
+# Years
+data$year= as.numeric(format(data$date,'%Y'))
+subset_year =subset(data,year<2004 | year>2019)
+data = subset(data,year>=2004 & year<=2019)
+# 11264 removed
+
+# Adress outside study area 17641 removed
+subset_adress_out=data[!complete.cases(data$first_address_date),]
+data = data[complete.cases(data$first_address_date),]
+#17641 removed
+
+#Remove tests of unmatched addresses.
+subset_adress_unkno=data[!complete.cases(data$x),]
+data = data[complete.cases(data$x),]
+#4185 removed
+
+#Combine removed by adress
+subset_adress_wrong = rbind(subset_adress_out,subset_adress_unkno)
+# 21826 removed
+
+# Missing values
+
+## race
+subset_race_na=data[!complete.cases(data$race),]
+data = data[complete.cases(data$race),]
+## edu4
+subset_edu_NA=data[!complete.cases(data$edu4),]
+data = data[complete.cases(data$edu4),]
+## exp_9_11_comb34
+subset_wtcexp_na=data[!complete.cases(data$exp_9_11_comb34),]
+data = data[complete.cases(data$exp_9_11_comb34),]
+
+# Combine missing
+subset_missing = rbind(subset_race_na,subset_edu_NA,subset_wtcexp_na)
+# 13559 removed
+
+# Combine all removed
+
+subset_removed = rbind(subset_year,subset_adress_wrong,subset_missing)
+rm(subset_adress_out,subset_adress_unkno,subset_race_na,subset_edu_NA,subset_wtcexp_na)
+
+# subset after 2012
+data$year= as.numeric(format(data$date,'%Y'))
+subset_after12 =subset(data,year>=2012 & year<2019)
+
+# subset first visit before 2006
+data$year_1st = as.Date(data$vis1dt,"%m/%d/%Y")
+data$year_1st= as.numeric(format(data$year_1st,'%Y'))
+subset_recall =subset(data,year_1st<=2006)
+
+# Diabetes and non diabetes subset
+
+data_nodiab = subset(data,diab_diag == 0)
+data_diab = subset(data,diab_diag == 1)
+
+# Convert to datetime
+data$EAQ_09_01=as.Date(data$EAQ_09_01,"%m/%d/%Y")
+data_nodiab$EAQ_09_01=as.Date(data_nodiab$EAQ_09_01,"%m/%d/%Y")
+data_diab$EAQ_09_01=as.Date(data_diab$EAQ_09_01,"%m/%d/%Y")
+
+# Create WTC exposure if worked beofre 9/14 or not
+
+data$wtc_bef14 <- ifelse(data$EAQ_09_01 <= "2001-09-14", 1, 0)
+data_nodiab$wtc_bef14 <- ifelse(data_nodiab$wtc_bef14 <= "2001-09-14", 1, 0)
+data_diab$wtc_bef14 <- ifelse(data_diab$wtc_bef14 <= "2001-09-14", 1, 0)
+
+```
+
+# table 1: population characteristics
+
+```{r}
+# Select variables and define the categorical ones
+listVars <- c("gender","age","bmi","race","edu4","diab_diag","htn_diag","exp_9_11_comb34","season","glucose","Cholesterol","pm_6month","tempavg_6month")
+
+catVars <- c("gender","race","edu4","diab_diag","htn_diag","season","exp_9_11_comb34")
+
+# Print the table
+table1 <- CreateTableOne(vars = listVars, data = data, includeNA = TRUE, factorVars = catVars)
+table1 <- print(table1)
+
+```
+
+Save table as a .doc file
+
+```{r message=FALSE, warning=FALSE}
+save_table(table1, "table1_test")
+```
+
+# table2: main effects of PM and WTC-exposure on glucose and total cholesterol.
+
+## Table
+
+```{r}
+
+outcomes = c("glucose", "Cholesterol")
+
+## Create complete sample
+
+temp_data = data
+results = data.frame()
+
+for (out in outcomes){
+  form<-paste0(out,"~pm_6month_iqr+as.factor(exp_9_11_comb34)+tempavg_6month_iqr+s(year,bs='ps')+gender+as.factor(race)+as.factor(edu4)+age+diab_diag+as.factor(season)+s(extractID,bs='re')") # Concatenate formula
+mod=bam(as.formula(form),data=temp_data)
+new_results = format_outcomes_column(mod, 2:4 , outcome = out, time = "6 months")
+new_results = format_outcomes_table(new_results, "complete")
+results = rbind(results, new_results)
+}
+
+table_results = results[,c(1,6,7,11)]
+## Create non diabetic
+
+temp_data = data_nodiab
+results = data.frame()
+
+for (out in outcomes){
+  form<-paste0(out,"~pm_6month_iqr+as.factor(exp_9_11_comb34)+tempavg_6month_iqr+s(year,bs='ps')+gender+as.factor(race)+as.factor(edu4)+age+diab_diag+as.factor(season)+s(extractID,bs='re')") # Concatenate formula
+mod=bam(as.formula(form),data=temp_data)
+new_results = format_outcomes_column(mod, 2:4 , outcome = out, time = "6 months")
+new_results = format_outcomes_table(new_results, "no")
+results = rbind(results, new_results)
+}
+
+table_results = cbind(table_results,results[,11])
+
+## Create diabetic
+
+temp_data = data_diab
+results = data.frame()
+
+for (out in outcomes){
+  form<-paste0(out,"~pm_6month_iqr+as.factor(exp_9_11_comb34)+tempavg_6month_iqr+s(year,bs='ps')+gender+as.factor(race)+as.factor(edu4)+age+diab_diag+as.factor(season)+s(extractID,bs='re')") # Concatenate formula
+mod=bam(as.formula(form),data=temp_data)
+new_results = format_outcomes_column(mod, 2:4 , outcome = out, time = "6 months")
+new_results = format_outcomes_table(new_results, "yes")
+results = rbind(results, new_results)
+}
+table_results = cbind(table_results,results[,11])
+
+table_results
+
+## Save table
+
+save_table(table = table_results, table_save_name = "table2")
+```
+
+## Plot
+
+```{r}
+outcomes = c("glucose", "Cholesterol")
+table_results = data.frame()
+## Create non diabetic
+
+temp_data = data_nodiab
+
+results = data.frame()
+
+for (out in outcomes){
+  form<-paste0(out,"~pm_6month_iqr+as.factor(exp_9_11_comb34)+tempavg_6month_iqr+s(year,bs='ps')+gender+as.factor(race)+as.factor(edu4)+age+diab_diag+as.factor(season)+s(extractID,bs='re')")
+  mod=bam(as.formula(form),data=temp_data)
+  new_results = format_outcomes_column(mod, 2:4,  out, "6 months")
+  new_results = format_outcomes_table(new_results, "est")
+  new_results$strat = "Non diabetic"
+  results = rbind(results, new_results)
+}
+
+table_results = results
+
+## Create diabetic
+
+temp_data = data_diab
+results = data.frame()
+
+for (out in outcomes){
+  form<-paste0(out,"~pm_6month_iqr+as.factor(exp_9_11_comb34)+tempavg_6month_iqr+s(year,bs='ps')+gender+as.factor(race)+as.factor(edu4)+age+diab_diag+as.factor(season)+s(extractID,bs='re')")
+  mod=bam(as.formula(form),data=temp_data)
+  new_results = format_outcomes_column(mod, 2:4,  out, "6 months")
+  new_results = format_outcomes_table(new_results, "est")
+  new_results$strat = "Diabetic"
+  results = rbind(results, new_results)
+}
+
+table_results = rbind(table_results,results)
+
+## Plot
+
+table_results$outcome<-factor(table_results$outcome,levels=c("glucose", "Cholesterol"), labels = c("Glucose", "Cholesterol"))
+table_results$rn<-factor(table_results$rn,levels=c("pm_6month_iqr", "as.factor(exp_9_11_comb34)2", "as.factor(exp_9_11_comb34)3"))
+table_results$strat<-factor(table_results$strat,levels=c("Non diabetic", "Diabetic"), labels =c("No", "Yes"))
+
+tiff("../results/plot1_v4.tiff",res=300,width=11,height=6,unit="in")
+
+# Filter data for Glucose and create the first plot with label 'A'
+plot1 <- table_results %>%
+  filter(outcome == "Glucose") %>%
+  ggplot(aes(x = rn, y = Estimate, ymin = lower, ymax = upper, shape = factor(strat))) +
+  geom_pointrange(position = position_dodge(width = 0.30)) +
+  geom_hline(yintercept = 0) +
+  xlab("Exposures") +
+  ylab("Estimate") +
+  scale_color_discrete(name = "Diabetes Status") +
+  scale_shape_discrete(name = "Diabetes Status") +
+  scale_x_discrete(labels = c(expression("PM"[2.5]), 'WTC2', 'WTC3')) +
+  scale_y_continuous(limits = c(-3, 9), breaks = c(-3, 0, 3, 6, 9)) +
+  theme_classic() +
+  theme(
+    legend.position = "none",  # Remove the legend from the first plot
+    text = element_text(size = 18),
+    axis.text = element_text(size = 18),
+    axis.text.x = element_text(colour = "black"),
+    axis.text.y = element_text(colour = "black")
+  ) +
+  labs(title = "A")
+
+# Filter data for Cholesterol and create the second plot with label 'B'
+plot2 <- table_results %>%
+  filter(outcome == "Cholesterol") %>%
+  ggplot(aes(x = rn, y = Estimate, ymin = lower, ymax = upper, shape = factor(strat))) +
+  geom_pointrange(position = position_dodge(width = 0.30)) +
+  geom_hline(yintercept = 0) +
+  xlab("Exposures") +
+  ylab("Estimate") +
+  scale_color_discrete(name = "Diabetes Status") +
+  scale_shape_discrete(name = "Diabetes Status") +
+  scale_x_discrete(labels = c(expression("PM"[2.5]), 'WTC2', 'WTC3')) +
+  scale_y_continuous(limits = c(-3, 9), breaks = c(-3, 0, 3, 6, 9)) +
+  theme_classic() +
+  theme(
+    legend.position = c(0.75, 0.9),  # Relocate the legend to the top-right corner
+    legend.background = element_blank(),
+    legend.box.background = element_rect(colour = "black"),
+    text = element_text(size = 18),
+    axis.text = element_text(size = 18),
+    legend.text = element_text(size = 18),
+    legend.title = element_text(size = 18),
+    axis.text.x = element_text(colour = "black"),
+    axis.text.y = element_text(colour = "black")
+  ) +
+  labs(title = "B")
+
+# Combine and print both plots together
+plot_combined <- plot1 + plot2
+print(plot_combined)
+
+dev.off()
+
+
+
+
+```
+
+
+# table 3: main effects of the different WTC exposures
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+wtc_exposures = c("EAQ_09_24", "EAQ_09_23", "EAQ_09_01", "as.factor(exp_9_11_comb34)")
+
+## Create complete sample
+
+results = data.frame()
+temp_data = data
+
+for (out in outcomes){
+  for (exp in wtc_exposures){
+    form<-paste0(out,"~pm_6month_iqr+", exp, "+tempavg_6month_iqr+s(year,bs='ps')+gender+as.factor(race)+as.factor(edu4)+age+diab_diag+as.factor(season)+s(extractID,bs='re')")
+    mod=bam(as.formula(form),data=temp_data)
+    if (exp == "as.factor(exp_9_11_comb34)"){
+      new_results = format_outcomes_column(mod, 3:4, out, "6 months")
+      }
+    else {
+      new_results = format_outcomes_column_sp(mod, 3, out, "6 months")
+      new_results$rn = exp
+    }
+    new_results = format_outcomes_table(new_results, "complete")
+    results = rbind(results, new_results)
+  }
+}
+
+table_results = results[,c(7,5,11)]
+
+## Non diabetic tests
+
+results = data.frame()
+temp_data = data_nodiab
+for (out in outcomes){
+  for (exp in wtc_exposures){
+    form<-paste0(out,"~pm_6month_iqr+", exp, "+tempavg_6month_iqr+s(year,bs='ps')+gender+as.factor(race)+as.factor(edu4)+age+diab_diag+as.factor(season)+s(extractID,bs='re')")
+    mod=bam(as.formula(form),data=temp_data)
+    if (exp == "as.factor(exp_9_11_comb34)"){
+      new_results = format_outcomes_column(mod, 3:4, out, "6 months")
+      }
+    else {
+      new_results = format_outcomes_column_sp(mod, 3, out, "6 months")
+      new_results$rn = exp
+    }
+    new_results = format_outcomes_table(new_results, "no")
+    results = rbind(results, new_results)
+  }
+}
+
+table_results = cbind(table_results, results[,11])
+
+## Diabetic tests
+
+results = data.frame()
+temp_data = data_diab
+for (out in outcomes){
+  for (exp in wtc_exposures){
+    form<-paste0(out,"~pm_6month_iqr+", exp, "+tempavg_6month_iqr+s(year,bs='ps')+gender+as.factor(race)+as.factor(edu4)+age+diab_diag+as.factor(season)+s(extractID,bs='re')")
+    mod=bam(as.formula(form),data=temp_data)
+    if (exp == "as.factor(exp_9_11_comb34)"){
+      new_results = format_outcomes_column(mod, 3:4, out, "6 months")
+      }
+    else {
+      new_results = format_outcomes_column_sp(mod, 3, out, "6 months")
+      new_results$rn = exp
+    }
+    new_results = format_outcomes_table(new_results, "yes")
+    results = rbind(results, new_results)
+  }
+}
+
+table_results = cbind(table_results, results[,11])
+
+## Save file
+
+save_table(table_results, "tableS3")
+```
+
+# Table 4: main effect of different time exposure averages: 7 days, 3 months, 6 months.
+
+```{r warning=FALSE}
+outcomes = c("glucose", "Cholesterol")
+exposure_pairs = c("~pm_7day_iqr+tempavg_7day_iqr", "~pm_3month_iqr+tempavg_3month_iqr", "~pm_6month_iqr+tempavg_6month_iqr")
+
+## Create complete sample
+
+results = data.frame()
+temp_data = data
+
+for (out in outcomes){
+  for (exp in exposure_pairs){
+    form<-paste0(out, exp, "+tempavg_6month_iqr+s(year,bs='ps')+as.factor(exp_9_11_comb34)+gender+as.factor(race)+as.factor(edu4)+age+diab_diag+as.factor(season)+s(extractID,bs='re')")
+    mod=bam(as.formula(form),data=temp_data)
+    new_results = format_outcomes_column_sp(mod, 2, out, exp)
+    new_results$rn = exp
+    new_results = format_outcomes_table(new_results, "complete")
+    results = rbind(results, new_results)
+  }
+}
+
+table_results = results[,c(7,5,11)]
+
+## Create no diabetes
+
+results = data.frame()
+temp_data = data_nodiab
+for (out in outcomes){
+  for (exp in exposure_pairs){
+    form<-paste0(out, exp, "+tempavg_6month_iqr+s(year,bs='ps')+as.factor(exp_9_11_comb34)+gender+as.factor(race)+as.factor(edu4)+age+diab_diag+as.factor(season)+s(extractID,bs='re')")
+    mod=bam(as.formula(form),data=temp_data)
+    new_results = format_outcomes_column_sp(mod, 2, out, exp)
+    new_results$rn = exp
+    new_results = format_outcomes_table(new_results, "complete")
+    results = rbind(results, new_results)
+  }
+}
+
+table_results = cbind(table_results, results[,11])
+
+
+## Create no diabetes
+
+results = data.frame()
+temp_data = data_diab
+for (out in outcomes){
+  for (exp in exposure_pairs){
+    form<-paste0(out, exp, "+tempavg_6month_iqr+s(year,bs='ps')+as.factor(exp_9_11_comb34)+gender+as.factor(race)+as.factor(edu4)+age+diab_diag+as.factor(season)+s(extractID,bs='re')")
+    mod=bam(as.formula(form),data=temp_data)
+    new_results = format_outcomes_column_sp(mod, 2, out, exp)
+    new_results$rn = exp
+    new_results = format_outcomes_table(new_results, "complete")
+    results = rbind(results, new_results)
+  }
+}
+
+table_results = cbind(table_results, results[,11])
+
+# Save table 
+save_table(table_results, "TableS2")
+
+
+```
+
+# Table5: interaction between PM2.5 and WTC exposure
+
+## Glucose 
+
+```{r}
+
+## Overall 
+
+mod_gluc=bam(glucose~pm_6month_iqr*as.factor(exp_9_11_comb34)+tempavg_6month_iqr+s(year,bs="ps")+gender+as.factor(race)+as.factor(edu4)+age+diab_diag+as.factor(season)+s(extractID,bs="re"),data=data )
+
+summary(mod_gluc)
+
+em <- as.data.table(emtrends(mod_gluc, ~ exp_9_11_comb34, var="pm_6month_iqr"))
+
+em$pm_6month_iqr.trend <- exp(em$pm_6month_iqr.trend)
+em$lower.CL <- exp(em$lower.CL)
+em$upper.CL <- exp(em$upper.CL)
+
+em$pm_6month_iqr.trend <- (em$pm_6month_iqr.trend - 1) * 100
+em$lower.CL <- (em$lower.CL - 1) * 100
+em$upper.CL <- (em$upper.CL - 1) *100
+
+em$pm_6month_iqr.trend <- round(em$pm_6month_iqr.trend, 2)
+em$lower.CL <- round(em$lower.CL, 2)
+em$upper.CL <- round(em$upper.CL, 2)
+
+em$est <- paste(em$pm_6month_iqr.trend, "(", em$lower.CL, ";", em$upper.CL, ")")
+
+em_final = em[,c(1,7)]
+
+
+## Save table
+
+rtffile <- RTF("../results/em_gluc.doc")  # this can be an .rtf or a .doc
+addParagraph(rtffile, "em")
+addTable(rtffile, cbind(rownames(em), em))
+done(rtffile)
+
+```
+
+## Cholesterol
+
+```{r}
+mod_cho=bam(Cholesterol~pm_6month_iqr*as.factor(exp_9_11_comb34)+tempavg_6month_iqr+s(year,bs="ps")+gender+as.factor(race)+as.factor(edu4)+age+diab_diag+as.factor(season)+s(extractID,bs="re"),data=data)
+
+summary(mod_cho)
+
+em <- as.data.table(emtrends(mod_cho, ~ exp_9_11_comb34, var="pm_6month_iqr"))
+
+em$pm_6month_iqr.trend <- exp(em$pm_6month_iqr.trend)
+em$lower.CL <- exp(em$lower.CL)
+em$upper.CL <- exp(em$upper.CL)
+
+em$pm_6month_iqr.trend <- (em$pm_6month_iqr.trend - 1) * 100
+em$lower.CL <- (em$lower.CL - 1) * 100
+em$upper.CL <- (em$upper.CL - 1) *100
+
+em$pm_6month_iqr.trend <- round(em$pm_6month_iqr.trend, 2)
+em$lower.CL <- round(em$lower.CL, 2)
+em$upper.CL <- round(em$upper.CL, 2)
+
+em
+
+em$cholesterol <- paste(em$pm_6month_iqr.trend, "(", em$lower.CL, ";", em$upper.CL, ")")
+
+mylist <- list(pm_6month_iqr=seq(2,20,by=2),exp_9_11_comb34=c(1,2,3))
+
+emmip(mod_cho, exp_9_11_comb34~pm_6month_iqr, at=mylist, CIs=TRUE, rg.limit = 1000000)
+
+
+## Save table
+
+rtffile <- RTF("../results/em_cho.doc")  # this can be an .rtf or a .doc
+addParagraph(rtffile, "em")
+addTable(rtffile, cbind(rownames(em), em))
+done(rtffile)
+
+```
+
+# Supplementary figure 1: splines for 6 months PM with glucose and cholesterol {.tabset}
+
+```{r}
+
+# Mod glucose
+
+mod=bam(glucose~s(pm_6month_iqr,bs="ps")+s(tempavg_6month_iqr,bs="ps")+as.factor(exp_9_11_comb34)+s(year,bs="ps")+gender+as.factor(race)+
+          +as.factor(edu4)+age+diab_diag+as.factor(season)+s(extractID,bs="re"),data=data)
+
+# Plot PM2.5
+
+points =  seq(-0.02, 0.06, 0.01)
+labels = round((exp(points)-1), 3)
+
+tiff("../results/spline_pm2.5_gluc.tiff",res=300,width=7,height=10,unit="in")
+
+plot(mod, select = 1, ylim = c(-0.02, 0.06),
+     xlab=expression("Annual average PM"[2.5]),ylab="Glucose % change and 95% CI", yaxt = "n",rug=TRUE)
+abline(h=0, col="black")
+axis(2, at = points, labels = labels)
+
+dev.off()
+
+# Plot temperature
+
+points =  seq(-0.02, 0.02, 0.01)
+labels = round((exp(points)-1), 3)
+
+tiff("../results/spline_temp_gluc.tiff",res=300,width=7,height=10,unit="in")
+
+plot(mod, select = 2, ylim = c(-0.02, 0.02),
+     xlab=expression("Annual average Temperature"),ylab="Glucose % change and 95% CI", yaxt = "n",rug=TRUE)
+abline(h=0, col="black")
+axis(2, at = points, labels = labels)
+
+dev.off()
+
+# Mod cholesterol
+
+mod=bam(Cholesterol~s(pm_6month_iqr,bs="ps")+s(tempavg_6month_iqr,bs="ps")+as.factor(exp_9_11_comb34)+s(year,bs="ps")+gender+as.factor(race)+
+            +as.factor(edu4)+age+diab_diag+as.factor(season)+s(extractID,bs="re"),data=data)
+
+# Plot PM2.5
+
+points =  seq(-0.05, 0.05, 0.01)
+labels = round((exp(points)-1), 3)
+
+tiff("../results/spline_pm2.5_cho.tiff",res=300,width=7,height=10,unit="in")
+
+plot(mod, select = 1, ylim = c(-0.05, 0.05),
+     xlab=expression("Annual average PM"[2.5]),ylab="Cholesterol % change and 95% CI", yaxt = "n",rug=TRUE)
+abline(h=0, col="black")
+axis(2, at = points, labels = labels)
+
+dev.off()
+
+# Plot temperature
+
+points =  seq(-0.05, 0.05, 0.01)
+labels = round((exp(points)-1), 3)
+
+tiff("../results/spline_temp_cho.tiff",res=300,width=7,height=10,unit="in")
+
+plot(mod, select = 2, ylim = c(-0.05, 0.05),
+     xlab=expression("Annual average Temperature"),ylab="Cholesterol % change and 95% CI", yaxt = "n",rug=TRUE)
+abline(h=0, col="black")
+axis(2, at = points, labels = labels)
+
+dev.off()
+
+
+```
+
+
+# TableS1: characeristics of other samples (dropped, non-diabetic, diabetic)
+
+(mention in the footnote the n dropped by each reasons).
+
+```{r}
+
+# Print the table
+table_sup1 <- CreateTableOne(vars = listVars, data = subset_missing, includeNA = TRUE, factorVars = catVars)
+
+table_sup1 <- print(table_sup1)
+
+rtffile <- RTF("../results/table_sup1_missing_data.doc")  # this can be an .rtf or a .doc
+addParagraph(rtffile, "table_sup1")
+addTable(rtffile, cbind(rownames(table_sup1), table_sup1))
+done(rtffile)
+
+
+#No diabetic
+table_nodiab <- CreateTableOne(vars = listVars, data = data_nodiab, includeNA = TRUE, factorVars = catVars)
+
+table_nodiab <- print(table_nodiab)
+
+# Diabetic
+
+table_diab <- CreateTableOne(vars = listVars, data = data_diab, includeNA = TRUE, factorVars = catVars)
+
+table_diab <- print(table_diab)
+
+table_sup2 <- cbind(table_nodiab, table_diab)
+rtffile <- RTF("../results/table_sup2.doc")  # this can be an .rtf or a .doc
+addParagraph(rtffile, "table_sup2")
+addTable(rtffile, cbind(rownames(table_sup2), table_sup2))
+done(rtffile)
+
+```
+
+# TableS2: sensitivity analyses- compare (1) main effects; (2) effects in 2001-2005 subset; (3) effects in 2012-2019 subset (they only collected address history starting 2012); (4) adjustment for income
+
+```{r}
+
+outcomes = c("glucose", "Cholesterol")
+
+## Create complete sample
+
+temp_data = data
+results = data.frame()
+
+for (out in outcomes){
+  form<-paste0(out,"~pm_6month_iqr+as.factor(exp_9_11_comb34)+tempavg_6month_iqr+s(year,bs='ps')+gender+as.factor(race)+as.factor(edu4)+age+diab_diag+as.factor(season)+s(extractID,bs='re')") # Concatenate formula
+mod=bam(as.formula(form),data=temp_data)
+new_results = format_outcomes_column(mod, 2:4 , outcome = out, time = "6 months")
+new_results = format_outcomes_table(new_results, "complete")
+results = rbind(results, new_results)
+}
+
+table_results = results[,c(1,6,7,11)]
+## Create non diabetic
+
+temp_data = subset_after12
+results = data.frame()
+
+for (out in outcomes){
+  form<-paste0(out,"~pm_6month_iqr+as.factor(exp_9_11_comb34)+tempavg_6month_iqr+s(year,bs='ps')+gender+as.factor(race)+as.factor(edu4)+age+diab_diag+as.factor(season)+s(extractID,bs='re')") # Concatenate formula
+mod=bam(as.formula(form),data=temp_data)
+new_results = format_outcomes_column(mod, 2:4 , outcome = out, time = "6 months")
+new_results = format_outcomes_table(new_results, "After 2012")
+results = rbind(results, new_results)
+}
+
+table_results = cbind(table_results,results[,11])
+
+## Create diabetic
+
+temp_data = subset_recall
+results = data.frame()
+
+for (out in outcomes){
+  form<-paste0(out,"~pm_6month_iqr+as.factor(exp_9_11_comb34)+tempavg_6month_iqr+s(year,bs='ps')+gender+as.factor(race)+as.factor(edu4)+age+diab_diag+as.factor(season)+s(extractID,bs='re')") # Concatenate formula
+mod=bam(as.formula(form),data=temp_data)
+new_results = format_outcomes_column(mod, 2:4 , outcome = out, time = "6 months")
+new_results = format_outcomes_table(new_results, "First visit before 2006 ")
+results = rbind(results, new_results)
+}
+table_results = cbind(table_results,results[,11])
+
+table_results
+
+## Save table
+
+save_table(table = table_results, table_save_name = "tableS4")
+```
+
+# Dichotomous outcomes
+
+```{r}
+
+# dichotomous variables
+
+## Complete
+data$gluc_dich_std = ifelse(data$glucose > 100, 1,0)
+data$gluc_dich_mean = ifelse(data$glucose > mean(data$glucose, na.rm = TRUE), 1,0)
+
+data$cho_dich_std = ifelse(data$Cholesterol > 200, 1,0)
+data$cho_dich_mean = ifelse(data$Cholesterol > mean(data$Cholesterol, na.rm = TRUE), 1,0)
+
+# No diab
+data_nodiab$gluc_dich_std = ifelse(data_nodiab$glucose > 100, 1,0)
+data_nodiab$gluc_dich_mean = ifelse(data_nodiab$glucose > mean(data_nodiab$glucose, na.rm = TRUE), 1,0)
+
+data_nodiab$cho_dich_std = ifelse(data_nodiab$Cholesterol > 200, 1,0)
+data_nodiab$cho_dich_mean = ifelse(data_nodiab$Cholesterol > mean(data_nodiab$Cholesterol, na.rm = TRUE), 1,0)
+
+
+## Diab
+data_diab$gluc_dich_std = ifelse(data_diab$glucose > 100, 1,0)
+data_diab$gluc_dich_mean = ifelse(data_diab$glucose > mean(data_diab$glucose, na.rm = TRUE), 1,0)
+
+data_diab$cho_dich_std = ifelse(data_diab$Cholesterol > 200, 1,0)
+data_diab$cho_dich_mean = ifelse(data_diab$Cholesterol > mean(data_diab$Cholesterol, na.rm = TRUE), 1,0)
+
+```
+
+## Table
+
+```{r}
+
+outcomes = c("gluc_dich_std", "cho_dich_std")
+
+## Create complete sample
+
+temp_data = data
+results = data.frame()
+
+for (out in outcomes){
+  form<-paste0(out,"~pm_6month_iqr+as.factor(exp_9_11_comb34)+tempavg_6month_iqr+s(year,bs='ps')+gender+as.factor(race)+as.factor(edu4)+age+diab_diag+as.factor(season)+s(extractID,bs='re')") # Concatenate formula
+mod=bam(as.formula(form),data=temp_data, family = binomial())
+new_results = format_outcomes_column(mod, 2:4 , outcome = out, time = "6 months")
+new_results = format_outcomes_table_bi(new_results, "complete")
+results = rbind(results, new_results)
+}
+
+table_results = results[,c(1,6,7,11)]
+## Create non diabetic
+
+temp_data = data_nodiab
+results = data.frame()
+
+for (out in outcomes){
+  form<-paste0(out,"~pm_6month_iqr+as.factor(exp_9_11_comb34)+tempavg_6month_iqr+s(year,bs='ps')+gender+as.factor(race)+as.factor(edu4)+age+diab_diag+as.factor(season)+s(extractID,bs='re')") # Concatenate formula
+mod=bam(as.formula(form),data=temp_data, family = binomial())
+new_results = format_outcomes_column(mod, 2:4 , outcome = out, time = "6 months")
+new_results = format_outcomes_table_bi(new_results, "no")
+results = rbind(results, new_results)
+}
+
+table_results = cbind(table_results,results[,11])
+
+## Create diabetic
+
+temp_data = data_diab
+results = data.frame()
+
+for (out in outcomes){
+  form<-paste0(out,"~pm_6month_iqr+as.factor(exp_9_11_comb34)+tempavg_6month_iqr+s(year,bs='ps')+gender+as.factor(race)+as.factor(edu4)+age+diab_diag+as.factor(season)+s(extractID,bs='re')") # Concatenate formula
+mod=bam(as.formula(form),data=temp_data, family = binomial())
+new_results = format_outcomes_column(mod, 2:4 , outcome = out, time = "6 months")
+new_results = format_outcomes_table_bi(new_results, "yes")
+results = rbind(results, new_results)
+}
+table_results = cbind(table_results,results[,11])
+
+table_results
+
+## Save table
+
+save_table(table = table_results, table_save_name = "table2_dich_mean")
+```
+
+## Plot
+
+```{r}
+
+outcomes = c("gluc_dich_std", "cho_dich_std")
+
+## Create complete sample
+
+temp_data = data
+results = data.frame()
+
+for (out in outcomes){
+  form<-paste0(out,"~pm_6month_iqr+as.factor(exp_9_11_comb34)+tempavg_6month_iqr+s(year,bs='ps')+gender+as.factor(race)+as.factor(edu4)+age+diab_diag+as.factor(season)+s(extractID,bs='re')") # Concatenate formula
+mod=bam(as.formula(form),data=temp_data, family = binomial())
+new_results = format_outcomes_column(mod, 2:4 , outcome = out, time = "6 months")
+new_results = format_outcomes_table_bi(new_results, "complete")
+results = rbind(results, new_results)
+}
+
+table_results = results
+
+## Plot
+
+table_results$outcome<-factor(table_results$outcome,levels=c("gluc_dich_std", "cho_dich_std"), labels = c("High glucose", "High cholesterol"))
+table_results$rn<-factor(table_results$rn,levels=c("pm_6month_iqr", "as.factor(exp_9_11_comb34)2", "as.factor(exp_9_11_comb34)3"))
+
+tiff("../results/plot_dichotomous.tiff",res=300,width=11,height=6,unit="in")
+
+plot  <- ggplot(table_results) + 
+  geom_pointrange(aes(x = rn, y = Estimate, ymin = lower, ymax = upper),position=position_dodge(width=0.30))+ geom_hline(aes(yintercept = 1)) +
+  xlab("Exposuress") + ylab("OR & 95% CI") +
+  scale_color_discrete(name="Diabetes status")+scale_shape_discrete(name="Diabetes status")+
+  facet_grid(cols = vars(as.factor(outcome))) + scale_x_discrete(labels=c('PM2.5','WTC:2','WTC:3')) +
+  theme_classic(base_size = 20)
+
+plot
+
+dev.off()
+
+```
+
+
+# Plots for posters and presentatons
+
+```{r}
+
+## Plot
+
+outcomes = c("glucose", "Cholesterol")
+table_results = data.frame()
+
+## Create Comlete sample
+
+temp_data = data
+
+results = data.frame()
+
+for (out in outcomes){
+  form<-paste0(out,"~pm_6month_iqr+as.factor(exp_9_11_comb34)+tempavg_6month_iqr+s(year,bs='ps')+gender+as.factor(race)+as.factor(edu4)+age+diab_diag+as.factor(season)+s(extractID,bs='re')")
+  mod=bam(as.formula(form),data=temp_data)
+  new_results = format_outcomes_column(mod, 2:4,  out, "6 months")
+  new_results = format_outcomes_table(new_results, "est")
+  new_results$strat = "Complete"
+  results = rbind(results, new_results)
+}
+
+table_results = results
+
+
+
+## Create non diabetic
+
+temp_data = data_nodiab
+
+results = data.frame()
+
+for (out in outcomes){
+  form<-paste0(out,"~pm_6month_iqr+as.factor(exp_9_11_comb34)+tempavg_6month_iqr+s(year,bs='ps')+gender+as.factor(race)+as.factor(edu4)+age+diab_diag+as.factor(season)+s(extractID,bs='re')")
+  mod=bam(as.formula(form),data=temp_data)
+  new_results = format_outcomes_column(mod, 2:4,  out, "6 months")
+  new_results = format_outcomes_table(new_results, "est")
+  new_results$strat = "Population without diabetes"
+  results = rbind(results, new_results)
+}
+
+table_results = rbind(table_results,results)
+
+## Create diabetic
+
+temp_data = data_diab
+results = data.frame()
+
+for (out in outcomes){
+  form<-paste0(out,"~pm_6month_iqr+as.factor(exp_9_11_comb34)+tempavg_6month_iqr+s(year,bs='ps')+gender+as.factor(race)+as.factor(edu4)+age+diab_diag+as.factor(season)+s(extractID,bs='re')")
+  mod=bam(as.formula(form),data=temp_data)
+  new_results = format_outcomes_column(mod, 2:4,  out, "6 months")
+  new_results = format_outcomes_table(new_results, "est")
+  new_results$strat = "Population with diabetes"
+  results = rbind(results, new_results)
+}
+
+table_results = rbind(table_results,results)
+
+## Plot
+
+table_results$outcome<-factor(table_results$outcome,levels=c("glucose", "Cholesterol"), labels = c("glucose", "cholesterol"))
+table_results$rn<-factor(table_results$rn,levels=c("pm_6month_iqr", "as.factor(exp_9_11_comb34)2", "as.factor(exp_9_11_comb34)3"))
+table_results$strat<-factor(table_results$strat,levels=c("Complete","Population without diabetes", "Population with diabetes"))
+
+
+
+plot  <- ggplot(table_results) + 
+  geom_pointrange(aes(x = rn, y = Estimate, ymin = lower, ymax = upper,col = factor(strat), shape=factor(strat)),position=position_dodge(width=0.30))+ geom_hline(aes(yintercept = 0)) +
+  xlab("Exposures") + ylab("Estimate") +
+  scale_color_discrete(name="Sub-sample:")+scale_shape_discrete(name="Sub-sample:")+
+  facet_grid(cols = vars(as.factor(outcome))) + scale_x_discrete(labels=c('PM2.5','WTC:2*','WTC:3*')) +
+  theme_classic(base_size = 20) + theme(legend.position = "bottom")
+
+tiff("../results/plot_poster.tiff",res=300,width=11,height=6,unit="in")
+
+plot
+
+dev.off()
+
+table_comp = table_results[table_results$strat == "Complete",]
+
+plot  <- ggplot(table_comp) + 
+  geom_pointrange(aes(x = rn, y = Estimate, ymin = lower, ymax = upper),position=position_dodge(width=0.30))+ geom_hline(aes(yintercept = 0)) +
+  xlab("Exposures") + ylab("Estimate") +
+  facet_grid(cols = vars(as.factor(outcome))) + scale_x_discrete(labels=c('PM2.5','WTC:2*','WTC:3*')) +
+  theme_classic(base_size = 20) + theme(legend.position = "bottom")
+
+tiff("../results/plot_only_complete.tiff",res=300,width=11,height=6,unit="in")
+
+plot
+
+dev.off()
+
+table_comp = table_results[table_results$strat != "Complete",]
+
+plot  <- ggplot(table_comp) + 
+  geom_pointrange(aes(x = rn, y = Estimate, ymin = lower, ymax = upper,col = factor(strat), shape=factor(strat)),position=position_dodge(width=0.30))+ geom_hline(aes(yintercept = 0)) +
+  xlab("Exposures") + ylab("Estimate") +
+  scale_color_discrete(name="Sub-sample:")+scale_shape_discrete(name="Sub-sample:")+
+  facet_grid(cols = vars(as.factor(outcome))) + scale_x_discrete(labels=c('PM2.5','WTC:2*','WTC:3*')) +
+  theme_classic(base_size = 20) + theme(legend.position = "bottom")
+
+tiff("../results/plot_only_strat.tiff",res=300,width=11,height=6,unit="in")
+
+plot
+
+dev.off()
+
+```
+
+# For reviewers 1st round
+
+## Check if people move
+
+```{r}
+
+df_change_a = select(data, c("extractID","date", "address")) #subset df to variables of interest
+
+df_change_a = df_change_a[order(extractID,date),] # chronologicaly order df
+
+df_change_a <- # lag one visit adress
+    df_change_a %>%
+    group_by(extractID) %>%
+    mutate(address_lag = dplyr::lag(address, n = 1, default = NA))
+
+df_change_a = df_change_a[complete.cases(df_change_a),] # Drop NAs
+
+df_change_a$address_comp = df_change_a$address != df_change_a$address_lag # Compare adresses
+
+df_change_agg=aggregate(address_comp~extractID,df_change_a,sum) #Count address changes
+
+df_change_agg$address_move_at_least_once = ifelse(df_change_agg$address_comp > 0, 1, 0)
+
+prop.table(table(df_change_agg$address_move_at_least_once))*100
+```
+
+## Sensitivity adding BMI
+
+### Table
+
+```{r}
+
+outcomes = c("glucose", "Cholesterol")
+
+## Create complete sample
+
+temp_data = data
+results = data.frame()
+
+for (out in outcomes){
+  form<-paste0(out,"~pm_6month_iqr+as.factor(exp_9_11_comb34)+tempavg_6month_iqr+s(year,bs='ps')+gender+as.factor(race)+as.factor(edu4)+age+bmi+diab_diag+as.factor(season)+s(extractID,bs='re')") # Concatenate formula
+mod=bam(as.formula(form),data=temp_data)
+new_results = format_outcomes_column(mod, 2:4 , outcome = out, time = "6 months")
+new_results = format_outcomes_table(new_results, "complete")
+results = rbind(results, new_results)
+}
+
+table_results = results[,c(1,6,7,11)]
+## Create non diabetic
+
+temp_data = data_nodiab
+results = data.frame()
+
+for (out in outcomes){
+  form<-paste0(out,"~pm_6month_iqr+as.factor(exp_9_11_comb34)+tempavg_6month_iqr+s(year,bs='ps')+gender+as.factor(race)+as.factor(edu4)+age+bmi+diab_diag+as.factor(season)+s(extractID,bs='re')") # Concatenate formula
+mod=bam(as.formula(form),data=temp_data)
+new_results = format_outcomes_column(mod, 2:4 , outcome = out, time = "6 months")
+new_results = format_outcomes_table(new_results, "no")
+results = rbind(results, new_results)
+}
+
+table_results = cbind(table_results,results[,11])
+
+## Create diabetic
+
+temp_data = data_diab
+results = data.frame()
+
+for (out in outcomes){
+  form<-paste0(out,"~pm_6month_iqr+as.factor(exp_9_11_comb34)+tempavg_6month_iqr+s(year,bs='ps')+gender+as.factor(race)+as.factor(edu4)+age+bmi+diab_diag+as.factor(season)+s(extractID,bs='re')") # Concatenate formula
+mod=bam(as.formula(form),data=temp_data)
+new_results = format_outcomes_column(mod, 2:4 , outcome = out, time = "6 months")
+new_results = format_outcomes_table(new_results, "yes")
+results = rbind(results, new_results)
+}
+table_results = cbind(table_results,results[,11])
+
+table_results
+
+## Save table
+
+save_table(table = table_results, table_save_name = "table2_BMI")
+```
+
+### Plot
+
+```{r}
+outcomes = c("glucose", "Cholesterol")
+table_results = data.frame()
+## Create non diabetic
+
+temp_data = data_nodiab
+
+results = data.frame()
+
+for (out in outcomes){
+  form<-paste0(out,"~pm_6month_iqr+as.factor(exp_9_11_comb34)+tempavg_6month_iqr+s(year,bs='ps')+gender+as.factor(race)+as.factor(edu4)+age+bmi+diab_diag+as.factor(season)+s(extractID,bs='re')")
+  mod=bam(as.formula(form),data=temp_data)
+  new_results = format_outcomes_column(mod, 2:4,  out, "6 months")
+  new_results = format_outcomes_table(new_results, "est")
+  new_results$strat = "Non diabetic"
+  results = rbind(results, new_results)
+}
+
+table_results = results
+
+## Create diabetic
+
+temp_data = data_diab
+results = data.frame()
+
+for (out in outcomes){
+  form<-paste0(out,"~pm_6month_iqr+as.factor(exp_9_11_comb34)+tempavg_6month_iqr+s(year,bs='ps')+gender+as.factor(race)+as.factor(edu4)+age+bmi+diab_diag+as.factor(season)+s(extractID,bs='re')")
+  mod=bam(as.formula(form),data=temp_data)
+  new_results = format_outcomes_column(mod, 2:4,  out, "6 months")
+  new_results = format_outcomes_table(new_results, "est")
+  new_results$strat = "Diabetic"
+  results = rbind(results, new_results)
+}
+
+table_results = rbind(table_results,results)
+
+## Plot
+
+table_results$outcome<-factor(table_results$outcome,levels=c("glucose", "Cholesterol"), labels = c("glucose", "cholesterol"))
+table_results$rn<-factor(table_results$rn,levels=c("pm_6month_iqr", "as.factor(exp_9_11_comb34)2", "as.factor(exp_9_11_comb34)3"))
+table_results$strat<-factor(table_results$strat,levels=c("Non diabetic", "Diabetic"), labels =c("No", "Yes"))
+
+tiff("../results/plot1_BMI.tiff",res=300,width=11,height=6,unit="in")
+
+plot  <- ggplot(table_results) + 
+  geom_pointrange(aes(x = rn, y = Estimate, ymin = lower, ymax = upper, shape=factor(strat)),position=position_dodge(width=0.30))+ geom_hline(aes(yintercept = 0)) +
+  xlab("Exposuress") + ylab("Estimate") +
+  scale_color_discrete(name="Diabetes status")+scale_shape_discrete(name="Diabetes status")+
+  facet_grid(cols = vars(as.factor(outcome))) + scale_x_discrete(labels=c('PM2.5','WTC:2','WTC:3')) +
+  theme_classic()
+
+plot
+
+dev.off()
+
+
+```
+
+## Check other WTC expousres
+
+### EAQ_09_24_10h
+```{r}
+
+outcomes = c("glucose", "Cholesterol")
+
+## Create complete sample
+
+results = data.frame()
+temp_data = data
+
+for (out in outcomes){
+  form<-paste0(out,"~pm_6month_iqr+ EAQ_09_24_10h +tempavg_6month_iqr+s(year,bs='ps')+gender+as.factor(race)+as.factor(edu4)+age+diab_diag+as.factor(season)+s(extractID,bs='re')")
+    mod=bam(as.formula(form),data=temp_data)
+      new_results = format_outcomes_column_sp(mod, 3, out, "6 months")
+      new_results$rn = "EAQ_09_24_10h"
+    new_results = format_outcomes_table(new_results, "complete")
+    results = rbind(results, new_results)
+}
+
+table_results = results[,c(7,5,11)]
+
+```
+
+#### Spline
+
+```{r}
+
+## Create complete sample
+
+results = data.frame()
+temp_data = data
+
+for (out in outcomes){
+  form<-paste0(out,"~pm_6month_iqr+ s(EAQ_09_24_10h,bs='ps') +tempavg_6month_iqr+s(year,bs='ps')+gender+as.factor(race)+as.factor(edu4)+age+diab_diag+as.factor(season)+s(extractID,bs='re')")
+    mod=bam(as.formula(form),data=temp_data)
+      new_results = format_outcomes_column_sp(mod, 3, out, "6 months")
+      new_results$rn = "EAQ_09_24_10h"
+    new_results = format_outcomes_table(new_results, "complete")
+    results = rbind(results, new_results)
+    
+    plot(mod)
+}
+
+
+
+table_results = results[,c(7,5,11)]
+
+```
+
+# For reviewers: 2nd round
+
+Show that wtc exposure is not associated with subsequent PM (simple linear regression with adjustment for year)
+
+```{r}
+
+mod = bam(pm_6month ~ as.factor(exp_9_11_comb34) + as.factor(race)+as.factor(edu4) + s(year,bs="ps"), data = data)
+
+table = as.data.table(summary(mod)$p.table)
+
+table$lower = table$Estimate - qnorm(0.975) * table$`Std. Error`
+table$upper = table$Estimate + qnorm(0.975) * table$`Std. Error`
+
+```
+
+Add % of movers and mean +- PM among movers vs. nonmovers
+
+```{r}
+
+# Select movers
+
+df_change_a = dplyr::select(data, c("extractID","date", "address")) #subset df to variables of interest
+
+df_change_a = df_change_a[order(extractID,date),] # chronologicaly order df
+
+df_change_a <- # lag one visit adress
+    df_change_a %>%
+    group_by(extractID) %>%
+    mutate(address_lag = dplyr::lag(address, n = 1, default = NA))
+
+df_change_a = df_change_a[complete.cases(df_change_a),] # Drop NAs
+
+df_change_a$address_comp = df_change_a$address != df_change_a$address_lag # Compare adresses
+
+df_change_agg=aggregate(address_comp~extractID,df_change_a,sum) #Count address changes
+
+df_change_agg$address_move_at_least_once = ifelse(df_change_agg$address_comp > 0, 1, 0)
+
+prop.table(table(df_change_agg$address_move_at_least_once))*100
+
+# Compare pm movers to non movers
+
+data_pm = dplyr::select(data, c("extractID","address", "pm_7day","pm_3month","pm_6month", "pm_annual"))
+
+df_merged_adress_pm = merge(data_pm, df_change_agg, by = "extractID")
+
+
+# Add % of movers and mean +- PM among movers vs. nonmovers
+
+# Select variables and define the categorical ones
+listVars <- c("pm_7day","pm_3month","pm_6month", "pm_annual")
+
+# Print the table
+table1 <- CreateTableOne(vars = listVars, strata = c("address_move_at_least_once"), data = df_merged_adress_pm, includeNA = TRUE)
+table1 <- print(table1)
+
+
+# Compare addresses of movers
+
+df_merged_adress_pm_movers = subset(df_merged_adress_pm, address_move_at_least_once == 1)
+
+df_change_address=aggregate(pm_6month ~ address + extractID,df_merged_adress_pm_movers,mean) #Count address changes
+
+df_change_address <- # lag one pm2.5
+    df_change_address %>%
+    group_by(extractID) %>%
+    mutate(pm_lag = dplyr::lag(pm_6month, n = 1, default = NA))
+
+df_change_address = df_change_address[complete.cases(df_change_address),]
+
+# Select variables and define the categorical ones
+listVars <- c("pm_6month", "pm_lag")
+
+# Print the table
+table1 <- CreateTableOne(vars = listVars, data = df_change_address, includeNA = TRUE)
+table1 <- print(table1)
+
+```
+
+DAG
+
+```{r}
+
+dag1 = dagitty('dag {
+"Diabetes & hypertension" [pos="-1,1.5"]
+"Glucose & total cholesterol" [outcome,pos="0,0.775"]
+"PM2.5 exposure" [exposure,pos="-2,1.5"]
+"Sociodemographic variables *" [pos="-1,-1"]
+"WTC exposure" [exposure,pos="-2,0"]
+Obesity [pos="-1,-0"]
+Temperature [pos="-0.5,2.5"]
+Year [pos="-1.5,2.5"]
+"Diabetes & hypertension" -> "Glucose & total cholesterol"
+"Diabetes & hypertension" -> "PM2.5 exposure"
+"Diabetes & hypertension" -> "WTC exposure"
+"PM2.5 exposure" -> "Glucose & total cholesterol"
+"PM2.5 exposure" -> Obesity
+"Sociodemographic variables *" -> "Glucose & total cholesterol"
+"Sociodemographic variables *" -> "PM2.5 exposure"
+"Sociodemographic variables *" -> "WTC exposure"
+"Sociodemographic variables *" -> Obesity
+"WTC exposure" -> "Glucose & total cholesterol"
+"WTC exposure" -> "PM2.5 exposure"
+"WTC exposure" -> Obesity
+Obesity -> "Glucose & total cholesterol"
+Temperature -> "Glucose & total cholesterol"
+Temperature -> "PM2.5 exposure"
+Temperature -> Obesity
+Year -> "Glucose & total cholesterol"
+Year -> "PM2.5 exposure"
+Year -> Temperature
+}
+')
+
+tiff("../results/DAG.tiff",res=300,width=10,height=6,unit="in")
+
+plot(dag1)
+
+dev.off()
+
+
+```
+
+Mediation analysis
+
+```{r}
+
+data$exp_9_11_comb34 = as.factor(data$exp_9_11_comb34)
+data$race = as.factor(data$race)
+data$edu4 = as.factor(data$edu4)
+data$season = as.factor(data$season)
+
+# Glucose
+
+data_gluc = data[complete.cases(data[,c("glucose")])]
+
+med.fit = gam(pm_6month_iqr ~exp_9_11_comb34+tempavg_6month_iqr+s(year,bs='ps')+gender+race+edu4+age+diab_diag+season+s(extractID,bs='re'), data = data_gluc)
+
+out.fit = gam(glucose ~ pm_6month_iqr+exp_9_11_comb34+tempavg_6month_iqr+s(year,bs='ps')+gender+race+edu4+age+diab_diag+season+s(extractID,bs='re'), data = data_gluc)
+
+med.out_gluc = mediate(med.fit, out.fit, treat = "exp_9_11_comb34", mediator = "pm_6month_iqr", boot = TRUE, control.value = 1 , treat.value = 3, sims= 1000)
+
+table_mediation_gluc = summary(med.out_gluc)
+
+tiff("../results/mediation_gluc.tiff",res=300,width=11,height=6,unit="in")
+
+plot(med.out_gluc)
+
+dev.off()
+
+# Cholesterol 
+
+data_cho = data[complete.cases(data[,c("Cholesterol")])]
+
+med.fit = gam(pm_6month_iqr ~exp_9_11_comb34+tempavg_6month_iqr+s(year,bs='ps')+gender+race+edu4+age+diab_diag+season+s(extractID,bs='re'), data = data_cho)
+
+out.fit = gam(Cholesterol ~ pm_6month_iqr+exp_9_11_comb34+tempavg_6month_iqr+s(year,bs='ps')+gender+race+edu4+age+diab_diag+season+s(extractID,bs='re'), data = data_cho)
+
+med.out_cho = mediate(med.fit, out.fit, treat = "exp_9_11_comb34", mediator = "pm_6month_iqr", boot = TRUE, control.value = 1 , treat.value = 3, sims= 1000)
+
+table_mediation_cho = summary(med.out_cho)
+
+tiff("../results/mediation_cho.tiff",res=300,width=11,height=6,unit="in")
+
+plot(med.out_cho)
+
+dev.off()
+
+
+```
+
+WTC Exposure without adusting from PM2.5
+
+```{r}
+
+outcomes = c("glucose", "Cholesterol")
+
+## Create complete sample
+
+temp_data = data
+results = data.frame()
+
+for (out in outcomes){
+  form<-paste0(out,"~as.factor(exp_9_11_comb34)+tempavg_6month_iqr+s(year,bs='ps')+gender+as.factor(race)+as.factor(edu4)+age+diab_diag+as.factor(season)+s(extractID,bs='re')") # Concatenate formula
+mod=bam(as.formula(form),data=temp_data)
+new_results = format_outcomes_column(mod, 2:4 , outcome = out, time = "6 months")
+new_results = format_outcomes_table(new_results, "complete")
+results = rbind(results, new_results)
+}
+
+table_results = results[,c(1,6,7,11)]
+## Create non diabetic
+
+temp_data = data_nodiab
+results = data.frame()
+
+for (out in outcomes){
+  form<-paste0(out,"~as.factor(exp_9_11_comb34)+tempavg_6month_iqr+s(year,bs='ps')+gender+as.factor(race)+as.factor(edu4)+age+diab_diag+as.factor(season)+s(extractID,bs='re')") # Concatenate formula
+mod=bam(as.formula(form),data=temp_data)
+new_results = format_outcomes_column(mod, 2:4 , outcome = out, time = "6 months")
+new_results = format_outcomes_table(new_results, "no")
+results = rbind(results, new_results)
+}
+
+table_results = cbind(table_results,results[,11])
+
+## Create diabetic
+
+temp_data = data_diab
+results = data.frame()
+
+for (out in outcomes){
+  form<-paste0(out,"~as.factor(exp_9_11_comb34)+tempavg_6month_iqr+s(year,bs='ps')+gender+as.factor(race)+as.factor(edu4)+age+diab_diag+as.factor(season)+s(extractID,bs='re')") # Concatenate formula
+mod=bam(as.formula(form),data=temp_data)
+new_results = format_outcomes_column(mod, 2:4 , outcome = out, time = "6 months")
+new_results = format_outcomes_table(new_results, "yes")
+results = rbind(results, new_results)
+}
+table_results = cbind(table_results,results[,11])
+
+table_results
+
+## Save table
+
+save_table(table = table_results, table_save_name = "table2_nopmadjustement")
+```
+
+Associations between comorvidities (before 2001) and WTC exposure
+
+```{r}
+
+data$year_diab = year(data$diab_1st_midpoint) # extract year
+data$year_htn = year(data$htn_1st_midpoint) # extract year
+
+data$diab_before_2001 = ifelse(data$year_diab <= 2001, 1, 0)
+data$diab_before_2001 = ifelse(is.na(data$diab_before_2001), 0, data$diab_before_2001)
+data$htn_before_2001 = ifelse(data$year_htn <= 2001, 1, 0)
+data$htn_before_2001 = ifelse(is.na(data$htn_before_2001), 0, data$htn_before_2001)
+
+data_single = data[!duplicated(data$extractID), ]
+
+chisq.test(data_single$diab_before_2001, data_single$exp_9_11_comb34)
+
+prop.table(table(data_single$exp_9_11_comb34, data_single$diab_before_2001))
+
+table(data_single$diab_before_2001)
+
+prop.table(table(data_single$exp_9_11_comb34[data_single$diab_before_2001 == 1]))
+
+chisq.test(data_single$htn_before_2001, data_single$exp_9_11_comb34)
+
+prop.table(table(data_single$exp_9_11_comb34, data_single$htn_before_2001))
+
+table(data_single$htn_before_2001)
+
+prop.table(table(data_single$exp_9_11_comb34[data_single$htn_before_2001 == 1]))
+
+prop.table(table(data_single$exp_9_11_comb34[data_single$htn_before_2001 == 0 & data_single$diab_before_2001 == 0]))
+
+```
+
