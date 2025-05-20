@@ -1,0 +1,489 @@
+---
+title: "CMD servival analysis"
+author: "Helena Krasnov"
+date: "2023-10-20"
+output:
+  pdf_document: default
+  html_document: default
+editor_options: 
+  chunk_output_type: console
+---
+
+rm(list=ls())
+```{r include=FALSE}
+library(dplyr)
+library(survival)
+library(lubridate)
+library(data.table)
+#library(dlookr) # for outlier analysis
+library(tidyr)
+library(gtsummary)
+library(readxl)
+library(survminer)
+library(tidyverse)
+library(ggpubr)
+library(table1)
+```
+
+# import the basic dataset for table 1 take first row with first year of inrolment 
+```{r}
+data<-readRDS('C:\\Users\\furmah01\\OneDrive - The Mount Sinai Hospital\\WTC new data 2022\\processed files\\Aim2-Helena\\long_term_preapred_full_data_2024-11-22.rds')
+
+data=subset(data,year==2003)
+
+#releval variables
+data$exp911_imp_3<-ifelse(data$exp911_imp == 4 ,3,data$exp911_imp)
+data$total_hours24 = data$Total_hours911_930/IQR(data$Total_hours911_930, na.rm = TRUE)
+data$total_days_October_June2 = data$total_days_October_June/IQR(data$total_days_October_June, na.rm = TRUE)
+```
+
+rename variables
+```{r}
+library(table1)
+data$outcome = 'Descriptive Statistics'
+
+# Factor the basic variables that
+# we're interested in
+#data$status <-factor(data$status, levels=c(0,1),labels=c("No","Yes"))
+
+data$Marital_Stat_Code <- 
+  factor(data$Marital_Stat_Code, 
+         levels=c(0,1),
+         labels=c("No", # Reference
+                  "Yes"))
+
+data$Gender <- 
+  factor(data$Gender, 
+         levels=c(0,1),
+         labels=c("Male", # Reference
+                  "Female"))
+
+data$edu4 <- 
+  factor(data$edu4, 
+         levels=c(1,2,3,4),
+         labels=c("Elementary School", # Reference
+                  "High School Grad",'Collage','Other'))
+
+data$injury <- 
+  factor(data$injury, 
+         levels=c(0,1),
+         labels=c("No", # Reference
+                  'Yes'))
+
+data$lost <- 
+  factor(data$lost, 
+         levels=c(0,1),
+         labels=c("No", # Reference
+                  'Yes'))
+
+data$horror <- 
+  factor(data$horror, 
+         levels=c(0,1),
+         labels=c("No", # Reference
+                  'Yes'))
+
+data$exp911_imp <- 
+  factor(data$exp911_imp, 
+         levels=c(1,2,3),
+         labels=c("Low", # Reference
+                  'Medium','High'))
+
+data$Lower_Manhattan911_code <- 
+  factor(data$Lower_Manhattan911_code, 
+         levels=c(0,1),
+         labels=c("No", # Reference
+                  'Yes'))
+
+#label(data$status)       <- "Outcome"
+label(data$Marital_Stat_Code)       <- "Marital Status"
+label(data$Race4)     <- "Race"
+label(data$edu4) <- "Specific Education Level"
+label(data$Gender)       <- "Sex"
+label(data$bmi)       <- "BMI"
+label(data$Age911)     <- "Age at 911"
+label(data$exp911_imp) <- "Dust Exposure index"
+label(data$Total_hours911_930)       <- "Total hours spent on site during September"
+label(data$Lower_Manhattan911_code)       <- "Presence in Lower Manhattan"
+label(data$total_days_October_June)     <- "Total days spent on site during October - June"
+label(data$injury) <- "Injuries"
+label(data$lost)       <- "Lost Someone"
+label(data$horror)       <- "Witnessed horror"
+label(data$MEDHH) <- "Median household income"
+label(data$age)       <- "Age at cohort entry"
+```
+
+# change decimal point in table
+```{r}
+my.render.cont <- function(x) {
+    with(stats.default(x), 
+         c("",
+          "Mean (SD)" = sprintf("%s (%s)",
+                                round_pad(MEAN, 2),
+                                round_pad(SD, 2))))
+}
+
+my.render.cat <- function(x) { 
+  sub('.', '.', c("", sapply(stats.default(x), 
+  function(y) with(y, sprintf("%d (%0.2f %%)", FREQ, PCT)))), fixed = TRUE) 
+}
+```
+
+# Table 1:Descriptive Characteristics of World Trade Center Health Program General Responders in a Cardiometabolic Risk Study: New York City, 2003–2021
+```{r}
+#data2$status<-as.factor(data2$status)
+
+table1(~ age + Marital_Stat_Code+ Race4 + edu4 + Gender + bmi  | outcome, data=data,overall=F,render.continuous=my.render.cont, render.categorical=my.render.cat)
+```
+
+# 1. add CMD databases
+```{r}
+# 1. Diabetes
+data_diab<-readRDS('C:\\Users\\furmah01\\OneDrive - The Mount Sinai Hospital\\WTC new data 2022\\Helena - aim 1\\generated files\\data_diab_2024-03-13.rds')
+data_diab<-data_diab[!duplicated(data_diab), ]
+
+# 2. HTN
+data_htn<-readRDS('C:\\Users\\furmah01\\OneDrive - The Mount Sinai Hospital\\WTC new data 2022\\Helena - aim 1\\generated files\\data_htn_2024-03-13.rds')
+data_htn<-data_htn[!duplicated(data_htn), ]
+
+# 3. CAD
+data_cad<-readRDS('C:\\Users\\furmah01\\OneDrive - The Mount Sinai Hospital\\WTC new data 2022\\Helena - aim 1\\generated files\\data_cad_2024-03-13.rds')
+data_cad<-data_cad[!duplicated(data_cad), ]
+```
+
+# Table 2: survival analysis. Associations Between World Trade Center Exposures and Cardiometabolic Disease incidence: New York City, 2003–2021
+```{r}
+dat = data_diab # change data based on the outcome
+
+dat = dat %>% group_by(ExtractID) %>% slice(n()) # take only last row where the diab diagnosis is
+  
+  # iqr the continous exposures
+dat$total_hours24 = dat$Total_hours911_930/IQR(dat$Total_hours911_930, na.rm = TRUE)
+dat$total_days_October_June2 = dat$total_days_October_June/IQR(dat$total_days_October_June, na.rm = TRUE)
+
+dat$time_midpoint = as.numeric(dat$year) - 2001 # set time of exposure
+dat$exp911_imp_3<-ifelse(dat$exp911_imp == 4 ,3,data$exp911_imp)
+
+  # probability weight for horror and injury
+  # logistic regression for horror
+  horror_model <- glm(horror ~ as.factor(Gender) + as.factor(Race4) + as.factor(edu4)+ as.factor(Marital_Stat_Code) + age + MEDHH + pct_poverty + pct_black + pct_NoHS +   bmi,family=binomial(link='logit'),data=dat)
+
+  # Extract the predicted probabilities (propensity scores)
+  horror_scores <- predict(horror_model, dat ,type = "response")
+  ipw_horror <- 1 / horror_scores
+
+  injury_model <- glm(injury ~ as.factor(Gender) + as.factor(Race4) + as.factor(edu4)+ as.factor(Marital_Stat_Code) + age + MEDHH + pct_poverty + pct_black + pct_NoHS + bmi,family=binomial(link='logit'),data=dat)
+
+  # Extract the predicted probabilities (propensity scores)
+  injury_scores <- predict(injury_model, dat ,type = "response")
+  ipw_injury <- 1 / injury_scores
+  
+  dat$lost <- 
+  factor(dat$lost, 
+         levels=c(0,1),
+         labels=c("No", # Reference
+                  'Yes'))
+
+dat$injury <- 
+  factor(dat$injury, 
+         levels=c(0,1),
+         labels=c("No", # Reference
+                  'Yes'))
+
+dat$horror <- 
+  factor(dat$horror, 
+         levels=c(0,1),
+         labels=c("No", # Reference
+                  'Yes'))
+
+dat$exp911_imp_3 <- 
+  factor(dat$exp911_imp_3, 
+         levels=c(1,2,3),
+         labels=c("Low", # Reference
+                  'Medium','High'))
+
+dat$Lower_Manhattan911_code <- 
+  factor(dat$Lower_Manhattan911_code, 
+         levels=c(0,1),
+         labels=c("No", # Reference
+                  'Yes'))
+
+# Exposure total number of hours during September
+fit_Sep <- coxph(Surv(time_midpoint, status) ~ total_hours24 + as.factor(Gender) + as.factor(Race4) + as.factor(edu4)+ as.factor(Marital_Stat_Code) + age + MEDHH + pct_poverty + pct_black + pct_NoHS + bmi, data = dat)%>%tbl_regression(include = c("total_hours24"), exponentiate = TRUE,estimate_fun = function(x) style_number(x, digits = 3),label = list(total_hours24 = "total_hours24"),pvalue_fun = ~style_sigfig(., digits = 3))
+
+fit_total_days <- coxph(Surv(time_midpoint, status) ~ total_days_October_June2 + as.factor(Gender) + as.factor(Race4) + as.factor(edu4)+ as.factor(Marital_Stat_Code) + age + MEDHH + pct_poverty + pct_black + pct_NoHS + bmi, data = dat)%>%tbl_regression(include = c("total_days_October_June2"), exponentiate = TRUE,estimate_fun = function(x) style_number(x, digits = 3),label = list(total_days_October_June2 = "total_days_October_June2"),pvalue_fun = ~style_sigfig(., digits = 3))
+
+fit_man<-coxph(Surv(time_midpoint, status) ~ Lower_Manhattan911_code  + as.factor(Gender) + as.factor(Race4) + as.factor(edu4)+ as.factor(Marital_Stat_Code) + age + MEDHH + pct_poverty + pct_black + pct_NoHS + bmi, data = dat)%>%tbl_regression(include = c("Lower_Manhattan911_code"), exponentiate = TRUE,estimate_fun = function(x) style_number(x, digits = 3),label = list(Lower_Manhattan911_code = "Presence in Lower Manhattan"),pvalue_fun = ~style_sigfig(., digits = 3))
+
+fit_injury<-coxph(Surv(time_midpoint, status) ~ injury +  as.factor(Gender) + as.factor(Race4) + as.factor(edu4)+ as.factor(Marital_Stat_Code) + age + MEDHH + pct_poverty + pct_black + pct_NoHS + bmi , data = dat,weights = ipw_injury)%>%tbl_regression(include = c("injury"), exponentiate = TRUE,estimate_fun = function(x) style_number(x, digits = 3),label = list(injury = "Injuries"),pvalue_fun = ~style_sigfig(., digits = 3))
+
+fit_lost<-coxph(Surv(time_midpoint, status) ~ lost +  as.factor(Gender) + as.factor(Race4) + as.factor(edu4)+ as.factor(Marital_Stat_Code) + age + MEDHH + pct_poverty + pct_black + pct_NoHS + bmi , data = dat)%>%tbl_regression(include = c("lost"), exponentiate = TRUE,estimate_fun = function(x) style_number(x, digits = 3),label = list(lost = "Lost Someone"),pvalue_fun = ~style_sigfig(., digits = 3))
+
+fit_horror<-coxph(Surv(time_midpoint, status) ~ horror +  as.factor(Gender) + as.factor(Race4) + as.factor(edu4)+ as.factor(Marital_Stat_Code) + age + MEDHH + pct_poverty + pct_black + pct_NoHS + bmi , data = dat, weights = ipw_horror)%>%tbl_regression(include = c("horror"), exponentiate = TRUE,estimate_fun = function(x) style_number(x, digits = 3),label = list(horror = "Witnessed horror"),pvalue_fun = ~style_sigfig(., digits = 3))
+
+# 0 no dust; 1 some dust; 2 significant amounts; 3 Directly in the cloud
+fit_dust<- coxph(Surv(time_midpoint, status) ~ exp911_imp + as.factor(Gender) + as.factor(Race4) + as.factor(edu4)+ as.factor(Marital_Stat_Code) + age + MEDHH + pct_poverty + pct_black + pct_NoHS + bmi , data = dat)%>%tbl_regression(include = c("exp911_imp"), exponentiate = TRUE,estimate_fun = function(x) style_number(x, digits = 3),label = list(exp911_imp = "Dust Exposure index"),pvalue_fun = ~style_sigfig(., digits = 3))
+
+tbl_stack(list(fit_Sep,fit_total_days,fit_dust,fit_man,fit_injury,fit_lost,fit_horror))
+```
+
+2. Trajectory analysis 
+
+# merge trajectory with ses and demographoc cariables
+```{r}
+gluc = readRDS('C:\\Users\\furmah01\\OneDrive - The Mount Sinai Hospital\\WTC new data 2022\\Helena - aim 1\\generated files\\lcmm_data\\WTC paper\\gluc_beta_lcmm3_byAge75_140.rds')
+sys = readRDS('C:\\Users\\furmah01\\OneDrive - The Mount Sinai Hospital\\WTC new data 2022\\Helena - aim 1\\generated files\\lcmm_data\\WTC paper\\blood_pressure_lcmm2_linear_below130.rds')
+```
+
+# figure 1:
+```{r}
+library(plyr)
+library(dplyr)
+
+gluc$class<-factor(gluc$class, levels = c(2, 1, 3))
+
+# Summarize data
+glucose_summary <- gluc %>%
+  group_by(age, class) %>%
+  summarise(
+    mean_glucose = mean(glucose, na.rm = TRUE),
+    n = n(),  # Count of observations
+    se = ifelse(n > 1, sd(glucose, na.rm = TRUE) / sqrt(n), 0),  # Handle small sample sizes
+    lower_ci = mean_glucose - 1.96 * se,
+    upper_ci = mean_glucose + 1.96 * se
+  ) %>%
+  ungroup()
+
+# Plot
+p = ggplot(gluc, aes(x = age, y = glucose, linetype = factor(class, 
+      labels = c("Steady Normal", "Normal to High", "Normal to Very High")))) +
+  geom_smooth(method = "gam", size = 1.2, color = "black", alpha = 0.3, n = 50) +  # Reduced smoothing points, no CI
+  labs(x = "Age", y = "Glucose (mg/dL)", linetype = "Class") +
+  theme_classic() +
+  scale_linetype_manual(values = c("solid", "dashed", "dotted")) +  # Different line types
+  theme(
+    axis.title.x = element_text(size = 14),
+    axis.title.y = element_text(size = 14),
+    axis.text.x = element_text(size = 14),
+    axis.text.y = element_text(size = 14),
+    legend.text = element_text(size = 14),
+    legend.position = "bottom",
+    legend.title = element_blank()
+  )
+
+sys$class<-factor(sys$class, levels = c(2,1))
+
+# Plot
+p1 = ggplot(sys, aes(x = age, y = Systolic_Pressure, linetype = factor(class, 
+      labels = c("Normal to Steady High", "Normal to Very High")))) +
+  geom_smooth(method = "gam", size = 1.2, color = "black", alpha = 0.3, n = 50) +  # Reduced smoothing points, no CI
+  labs(x = "Age", y = "Systolic Blood Pressure (mm Hg)", linetype = "Class") +
+  theme_classic() +
+  scale_linetype_manual(values = c("solid", "dashed")) +  # Different line types
+  theme(
+    axis.title.x = element_text(size = 14),
+    axis.title.y = element_text(size = 14),
+    axis.text.x = element_text(size = 14),
+    axis.text.y = element_text(size = 14),
+    legend.text = element_text(size = 14),
+    legend.position = "bottom",
+    legend.title = element_blank()
+  )
+```
+
+# relevel thae groups for logistic regression
+```{r}
+traj_age <-readRDS("C:\\Users\\furmah01\\OneDrive - The Mount Sinai Hospital\\WTC new data 2022\\Helena - aim 1\\generated files\\lcmm_data\\WTC paper\\gluc_beta_lcmm3_byAge75_140.rds")
+traj_age=subset(traj_age,select=c("ExtractID","class","year"))
+traj_age = traj_age %>% group_by(ExtractID) %>% slice(n())
+data_tranj_age<-merge(data, traj_age , by = c('ExtractID'))
+```
+
+```{r}
+data_tranj_age$lost <- 
+  factor(data_tranj_age$lost, 
+         levels=c(0,1),
+         labels=c("No", # Reference
+                  'Yes'))
+
+data_tranj_age$injury <- 
+  factor(data_tranj_age$injury, 
+         levels=c(0,1),
+         labels=c("No", # Reference
+                  'Yes'))
+
+data_tranj_age$horror <- 
+  factor(data_tranj_age$horror, 
+         levels=c(0,1),
+         labels=c("No", # Reference
+                  'Yes'))
+
+data_tranj_age$exp911_imp_3 <- 
+  factor(data_tranj_age$exp911_imp_3, 
+         levels=c(1,2,3),
+         labels=c("Low", # Reference
+                  'Medium','High'))
+
+data_tranj_age$Lower_Manhattan911_code <- 
+  factor(data_tranj_age$Lower_Manhattan911_code, 
+         levels=c(0,1),
+         labels=c("No", # Reference
+                  'Yes'))
+
+```
+
+```{r}
+data_tranj_age$class2 <- ifelse(data_tranj_age$class == 2,0,data_tranj_age$class)
+```
+
+
+# Table 3: Associations Between World Trade Center Exposures and Glucose or Systolic Blood PressureTrajectories: New York City, 2003–2021
+Normal to High (1)  vs steady normal(2)
+```{r}
+dat = data_tranj_age[data_tranj_age$class2 == '0' | data_tranj_age$class2 == '1',]
+
+horror_model <- glm(horror ~ as.factor(Gender) + as.factor(Race4) + as.factor(edu4)+ as.factor(Marital_Stat_Code) + age + pct_black + MEDHH + pct_poverty+pct_NoHS + bmi,family=binomial(link='logit'),data=dat)
+
+# Extract the predicted probabilities (propensity scores)
+horror_scores <- predict(horror_model, dat ,type = "response")
+ipw_horror <- 1 / horror_scores
+
+injury_model <- glm(injury ~ as.factor(Gender) + as.factor(Race4) + as.factor(edu4)+ as.factor(Marital_Stat_Code) + age + pct_black + MEDHH + pct_poverty+pct_NoHS + bmi,family=binomial(link='logit'),data=dat)
+
+# Extract the predicted probabilities (propensity scores)
+injury_scores <- predict(injury_model, dat ,type = "response")
+ipw_injury <- 1 / injury_scores
+
+
+fit_Sep <- glm(class2 ~ total_hours24+ as.factor(Gender) + as.factor(Race4) + as.factor(edu4)+ as.factor(Marital_Stat_Code) + pct_black + MEDHH + pct_poverty+pct_NoHS + bmi, data = dat)%>%tbl_regression(include = c("total_hours24"), exponentiate = TRUE,estimate_fun = function(x) style_number(x, digits = 3),label = list(total_hours24 = "Total hours spent on site during September"))
+
+fit_man <- glm(class2 ~ Lower_Manhattan911_code+ as.factor(Gender) + as.factor(Race4) + as.factor(edu4)+ as.factor(Marital_Stat_Code) + pct_black + MEDHH + pct_poverty+pct_NoHS + bmi, data = dat)%>%tbl_regression(include = c("Lower_Manhattan911_code"), exponentiate = TRUE,estimate_fun = function(x) style_number(x, digits = 3),label = list(Lower_Manhattan911_code = "Presence in Lower Manhattan"))
+
+fit_total_days <- glm(class2 ~ total_days_October_June2+ as.factor(Gender) + as.factor(Race4) + as.factor(edu4)+ as.factor(Marital_Stat_Code) +pct_black + MEDHH + pct_poverty+pct_NoHS + bmi, data = dat)%>%tbl_regression(include = c("total_days_October_June2"), exponentiate = TRUE,estimate_fun = function(x) style_number(x, digits = 3),label = list(total_days_October_June2 = "Total days spent on site during October - June"))
+
+fit_injury <- glm(class2 ~ injury+ as.factor(Gender) + as.factor(Race4) + as.factor(edu4)+ as.factor(Marital_Stat_Code) + pct_black + MEDHH + pct_poverty+pct_NoHS + bmi, weights = ipw_injury, data = dat)%>%tbl_regression(include = c("injury"), exponentiate = TRUE,estimate_fun = function(x) style_number(x, digits = 3),label = list(injury = "Injuries"))
+
+fit_lost <- glm(class2 ~ lost+ as.factor(Gender) + as.factor(Race4) + as.factor(edu4)+ as.factor(Marital_Stat_Code) + pct_black + MEDHH + pct_poverty+pct_NoHS + bmi, data = dat)%>%tbl_regression(include = c("lost"), exponentiate = TRUE,estimate_fun = function(x) style_number(x, digits = 3),label = list(lost = "Lost Someone"))
+
+fit_horror <- glm(class2 ~ horror+ as.factor(Gender) + as.factor(Race4) + as.factor(edu4)+ as.factor(Marital_Stat_Code) + pct_black + MEDHH + pct_poverty+pct_NoHS + bmi,weights = ipw_horror, data = dat)%>%tbl_regression(include = c("horror"), exponentiate = TRUE,estimate_fun = function(x) style_number(x, digits = 3),label = list(horror = "Witnessed horror"))
+
+fit_dust <- glm(class2 ~ exp911_imp+ as.factor(Gender) + as.factor(Race4) + as.factor(edu4)+ as.factor(Marital_Stat_Code) + pct_black + MEDHH + pct_poverty+pct_NoHS + bmi, data = dat)%>%tbl_regression(include = c("exp911_imp"), exponentiate = TRUE,estimate_fun = function(x) style_number(x, digits = 3),label = list(exp911_imp = "Dust Exposure index"))
+
+
+  tbl_stack(tbls = list(fit_dust,fit_Sep,fit_man,fit_total_days,fit_injury,fit_lost,fit_horror))
+```
+
+Normal to Very High (3)  vs steady normal(2)
+```{r}
+dat = data_tranj_age[data_tranj_age$class2 == '0' | data_tranj_age$class2 == '3',]
+
+horror_model <- glm(horror ~ as.factor(Gender) + as.factor(Race4) + as.factor(edu4)+ as.factor(Marital_Stat_Code) + age + pct_black + MEDHH + pct_poverty+pct_NoHS + bmi,family=binomial(link='logit'),data=dat)
+
+# Extract the predicted probabilities (propensity scores)
+horror_scores <- predict(horror_model, dat ,type = "response")
+ipw_horror <- 1 / horror_scores
+
+injury_model <- glm(injury ~ as.factor(Gender) + as.factor(Race4) + as.factor(edu4)+ as.factor(Marital_Stat_Code) + age + pct_black + MEDHH + pct_poverty+pct_NoHS + bmi,family=binomial(link='logit'),data=dat)
+
+# Extract the predicted probabilities (propensity scores)
+injury_scores <- predict(injury_model, dat ,type = "response")
+ipw_injury <- 1 / injury_scores
+
+
+fit_Sep <- glm(class2 ~ total_hours24+ as.factor(Gender) + as.factor(Race4) + as.factor(edu4)+ as.factor(Marital_Stat_Code) + pct_black + MEDHH + pct_poverty+pct_NoHS + bmi, data = dat)%>%tbl_regression(include = c("total_hours24"), exponentiate = TRUE,estimate_fun = function(x) style_number(x, digits = 3),label = list(total_hours24 = "Total hours spent on site during September"))
+
+fit_man <- glm(class2 ~ Lower_Manhattan911_code+ as.factor(Gender) + as.factor(Race4) + as.factor(edu4)+ as.factor(Marital_Stat_Code) + pct_black + MEDHH + pct_poverty+pct_NoHS + bmi, data = dat)%>%tbl_regression(include = c("Lower_Manhattan911_code"), exponentiate = TRUE,estimate_fun = function(x) style_number(x, digits = 3),label = list(Lower_Manhattan911_code = "Presence in Lower Manhattan"))
+
+fit_total_days <- glm(class2 ~ total_days_October_June2+ as.factor(Gender) + as.factor(Race4) + as.factor(edu4)+ as.factor(Marital_Stat_Code) +pct_black + MEDHH + pct_poverty+pct_NoHS + bmi, data = dat)%>%tbl_regression(include = c("total_days_October_June2"), exponentiate = TRUE,estimate_fun = function(x) style_number(x, digits = 3),label = list(total_days_October_June2 = "Total days spent on site during October - June"))
+
+fit_injury <- glm(class2 ~ injury+ as.factor(Gender) + as.factor(Race4) + as.factor(edu4)+ as.factor(Marital_Stat_Code) + pct_black + MEDHH + pct_poverty+pct_NoHS + bmi, weights = ipw_injury, data = dat)%>%tbl_regression(include = c("injury"), exponentiate = TRUE,estimate_fun = function(x) style_number(x, digits = 3),label = list(injury = "Injuries"))
+
+fit_lost <- glm(class2 ~ lost+ as.factor(Gender) + as.factor(Race4) + as.factor(edu4)+ as.factor(Marital_Stat_Code) + pct_black + MEDHH + pct_poverty+pct_NoHS + bmi, data = dat)%>%tbl_regression(include = c("lost"), exponentiate = TRUE,estimate_fun = function(x) style_number(x, digits = 3),label = list(lost = "Lost Someone"))
+
+fit_horror <- glm(class2 ~ horror+ as.factor(Gender) + as.factor(Race4) + as.factor(edu4)+ as.factor(Marital_Stat_Code) + pct_black + MEDHH + pct_poverty+pct_NoHS + bmi,weights = ipw_horror, data = dat)%>%tbl_regression(include = c("horror"), exponentiate = TRUE,estimate_fun = function(x) style_number(x, digits = 3),label = list(horror = "Witnessed horror"))
+
+fit_dust <- glm(class2 ~ exp911_imp+ as.factor(Gender) + as.factor(Race4) + as.factor(edu4)+ as.factor(Marital_Stat_Code) + pct_black + MEDHH + pct_poverty+pct_NoHS + bmi, data = dat)%>%tbl_regression(include = c("exp911_imp"), exponentiate = TRUE,estimate_fun = function(x) style_number(x, digits = 3),label = list(exp911_imp = "Dust Exposure index"))
+
+
+  tbl_stack(tbls = list(fit_dust,fit_Sep,fit_man,fit_total_days,fit_injury,fit_lost,fit_horror))
+```
+
+# SBP
+```{r}
+traj_age <-readRDS("C:\\Users\\furmah01\\OneDrive - The Mount Sinai Hospital\\WTC new data 2022\\Helena - aim 1\\generated files\\lcmm_data\\WTC paper\\blood_pressure_lcmm2_linear_below130.rds")
+traj_age=subset(traj_age,select=c("ExtractID","class","year"))
+traj_age = traj_age %>% group_by(ExtractID) %>% slice(n())
+data_tranj_sbp<-merge(data, traj_age , by = c('ExtractID'))
+```
+
+# probability weight for horror and injury
+```{r}
+# logistic regression for horror
+horror_model <- glm(horror ~ as.factor(Gender) + as.factor(Race4) + as.factor(edu4)+ as.factor(Marital_Stat_Code) + age + pct_black + MEDHH + pct_poverty+pct_NoHS + bmi,family=binomial(link='logit'),data=data_tranj_sbp)
+
+# Extract the predicted probabilities (propensity scores)
+horror_scores <- predict(horror_model, data_tranj_age ,type = "response")
+ipw_horror <- 1 / horror_scores
+
+injury_model <- glm(injury ~ as.factor(Gender) + as.factor(Race4) + as.factor(edu4)+ as.factor(Marital_Stat_Code) + age + pct_black + MEDHH + pct_poverty+pct_NoHS + bmi,family=binomial(link='logit'),data=data_tranj_age)
+
+# Extract the predicted probabilities (propensity scores)
+injury_scores <- predict(injury_model, data_tranj_age ,type = "response")
+ipw_injury <- 1 / injury_scores
+```
+
+
+```{r}
+data_tranj_age$lost <- 
+  factor(data_tranj_age$lost, 
+         levels=c(0,1),
+         labels=c("No", # Reference
+                  'Yes'))
+
+data_tranj_age$injury <- 
+  factor(data_tranj_age$injury, 
+         levels=c(0,1),
+         labels=c("No", # Reference
+                  'Yes'))
+
+data_tranj_age$horror <- 
+  factor(data_tranj_age$horror, 
+         levels=c(0,1),
+         labels=c("No", # Reference
+                  'Yes'))
+
+data_tranj_age$exp911_imp_3 <- 
+  factor(data_tranj_age$exp911_imp_3, 
+         levels=c(1,2,3),
+         labels=c("Low", # Reference
+                  'Medium','High'))
+
+data_tranj_age$Lower_Manhattan911_code <- 
+  factor(data_tranj_age$Lower_Manhattan911_code, 
+         levels=c(0,1),
+         labels=c("No", # Reference
+                  'Yes'))
+
+
+# based on the plot (see attached in mail)
+data_tranj_age$class2 <- ifelse(data_tranj_age$class == 2,0,1)
+
+fit_Sep <- glm(class2 ~ total_hours24+ as.factor(Gender) + as.factor(Race4) + as.factor(edu4)+ as.factor(Marital_Stat_Code) + pct_black + MEDHH + pct_poverty+pct_NoHS + bmi, data = data_tranj_age)%>%tbl_regression(include = c("total_hours24"), exponentiate = TRUE,estimate_fun = function(x) style_number(x, digits = 3),label = list(total_hours24 = "Total hours spent on site during September"),pvalue_fun = ~style_sigfig(., digits = 3))
+
+fit_man <- glm(class2 ~ Lower_Manhattan911_code+ as.factor(Gender) + as.factor(Race4) + as.factor(edu4)+ as.factor(Marital_Stat_Code) + pct_black + MEDHH + pct_poverty+pct_NoHS + bmi, data = data_tranj_age)%>%tbl_regression(include = c("Lower_Manhattan911_code"), exponentiate = TRUE,estimate_fun = function(x) style_number(x, digits = 3),label = list(Lower_Manhattan911_code = "Presence in Lower Manhattan"),pvalue_fun = ~style_sigfig(., digits = 3))
+
+fit_total_days <- glm(class2 ~ total_days_October_June2+ as.factor(Gender) + as.factor(Race4) + as.factor(edu4)+ as.factor(Marital_Stat_Code) +pct_black + MEDHH + pct_poverty+pct_NoHS + bmi, data = data_tranj_age)%>%tbl_regression(include = c("total_days_October_June2"), exponentiate = TRUE,estimate_fun = function(x) style_number(x, digits = 3),label = list(total_days_October_June2 = "Total days spent on site during October - June"),pvalue_fun = ~style_sigfig(., digits = 3))
+
+fit_injury <- glm(class2 ~ injury+ as.factor(Gender) + as.factor(Race4) + as.factor(edu4)+ as.factor(Marital_Stat_Code) + pct_black + MEDHH + pct_poverty+pct_NoHS + bmi, weights = ipw_injury, data = data_tranj_age)%>%tbl_regression(include = c("injury"), exponentiate = TRUE,estimate_fun = function(x) style_number(x, digits = 3),label = list(injury = "Injuries"),pvalue_fun = ~style_sigfig(., digits = 3))
+
+fit_lost <- glm(class2 ~ lost+ as.factor(Gender) + as.factor(Race4) + as.factor(edu4)+ as.factor(Marital_Stat_Code) + pct_black + MEDHH + pct_poverty+pct_NoHS + bmi, data = data_tranj_age)%>%tbl_regression(include = c("lost"), exponentiate = TRUE,estimate_fun = function(x) style_number(x, digits = 3),label = list(lost = "Lost Someone"),pvalue_fun = ~style_sigfig(., digits = 3))
+
+fit_horror <- glm(class2 ~ horror+ as.factor(Gender) + as.factor(Race4) + as.factor(edu4)+ as.factor(Marital_Stat_Code) + pct_black + MEDHH + pct_poverty+pct_NoHS + bmi,weights = ipw_horror, data = data_tranj_age)%>%tbl_regression(include = c("horror"), exponentiate = TRUE,estimate_fun = function(x) style_number(x, digits = 3),label = list(horror = "Witnessed horror"),pvalue_fun = ~style_sigfig(., digits = 3))
+
+fit_dust <- glm(class2 ~ exp911_imp_3+ as.factor(Gender) + as.factor(Race4) + as.factor(edu4)+ as.factor(Marital_Stat_Code) + pct_black + MEDHH + pct_poverty+pct_NoHS + bmi, data = data_tranj_age)%>%tbl_regression(include = c("exp911_imp_3"), exponentiate = TRUE,estimate_fun = function(x) style_number(x, digits = 3),label = list(exp911_imp_3 = "Dust Exposure index"),pvalue_fun = ~style_sigfig(., digits = 3))
+```
+
+```{r}
+  tbl_stack(tbls = list(fit_dust,fit_Sep,fit_man,fit_total_days,fit_injury,fit_lost,fit_horror))
+```
+
+

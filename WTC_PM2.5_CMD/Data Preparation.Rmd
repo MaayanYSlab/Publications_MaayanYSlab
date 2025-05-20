@@ -1,0 +1,701 @@
+---
+title: "Data Preparation"
+author: "Helena Krasnov"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output:
+  html_document:
+    toc: true
+    number_sections: true
+    toc_float:
+      collapsed: false
+      smooth_scroll: false
+    theme: united
+---
+
+1. Initial database for all responders including demographic and socio economic variables. Out of this data, all other files are created
+
+# Set working dirctory
+
+```{r}
+
+wd = "C:/Users/furmah01/OneDrive - The Mount Sinai Hospital/WTC new data 2022 - Yitshak-sade, Maayan's files/Original files"
+
+
+```
+
+# Load libraries
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+
+# Options
+options(scipen = 100)
+
+# Libraries
+library(fst) # to import PM2.5 and temp files
+library(readxl)
+library(lubridate)
+library(data.table)
+library(dplyr)
+library(tidyr)
+library(purrr)
+library(naniar)
+library(neatRanges)
+library(readr)
+library(lcmm)
+```
+
+# Demographic 
+```{r}
+demog = read_excel(paste0(wd,"/MYS221017_AirPollution_Demographics.xlsx"))
+length(unique(demog$ExtractID))
+```
+
+## Recoding of variables
+
+# Education
+
+1=less than high school, 2=highschool, 3=some college, 4=college or professional school
+
+```{r}
+demog$edu4=ifelse(demog$Educ_Level_Code=="Some High School" | demog$Educ_Level_Code=="Elem School",1,
+                 ifelse(demog$Educ_Level_Code=="High School Grad",2,
+                        ifelse(demog$Educ_Level_Code=="Some College",3,
+                        ifelse(demog$Educ_Level_Code=="M",NA,4))))
+
+prop.table(table(demog$edu4, useNA = "ifany")) 
+```
+
+# Income level
+
+```{r}
+# 26 missing values
+demog$income=ifelse(demog$Incom_GP=="$30-60,000" ,2,
+                   ifelse(demog$Incom_GP=="$60-80,000",3,
+                          ifelse(demog$Incom_GP=="<$30,000",1,
+                                 ifelse(demog$Incom_GP==">$80,000",4,NA))))
+```
+
+# Race 
+
+We crate a new race variable that assigns hispanic to observations that do not have other races and change uknowns and empties to NA.
+
+```{r}
+demog$race4_num=ifelse(demog$Race4=="White",1,ifelse(demog$Race4=="Black",2,ifelse(demog$Race4=="Other",3,4)))
+
+prop.table(table(demog$race4_num, useNA = "ifany"))
+```
+
+# Marital status and gender
+
+```{r}
+demog$Marital_Stat_Code=ifelse(demog$Marital_Stat_Code=="M",NA,demog$Marital_Stat_Code)
+demog$Marital_Stat_Code=ifelse(demog$Marital_Stat_Code=="Married or partnered",1,0)
+demog$Gender = ifelse(demog$Gender == "Female",1,0)
+```
+
+## Get visits order
+
+```{r}
+DF=subset(demog, select=c("ExtractID","Vis1dt", "Vis2dt","Vis3dt","Vis4dt","Vis5dt","Vis6dt","Vis7dt","Vis8dt", "Vis9dt","Vis10dt","Vis11dt","Vis12dt","Vis13dt","Vis14dt","Vis15dt","Vis16dt","Vis17dt"))
+
+start_col <- which(colnames(DF) == "Vis1dt")
+end_col <-  which(colnames(DF) == "Vis17dt")
+
+DF[start_col:end_col] <- lapply(DF[start_col:end_col], 
+                        function(x) format(as.Date(x), "%Y-%m-%d"))
+data_long <- melt(DF,
+                  id.vars=c("ExtractID"),
+                  variable.name="visit",
+                  value.name="Visitdate")
+```
+
+```{r}
+data_long$visit_Number=ifelse(data_long$visit=="Vis1dt",1,
+                         ifelse(data_long$visit=="Vis2dt",2,
+                                ifelse(data_long$visit=="Vis3dt",3,
+                                       ifelse(data_long$visit=="Vis4dt",4,
+                                              ifelse(data_long$visit=="Vis5dt",5,
+                                                     ifelse(data_long$visit=="Vis6dt",6,
+                                                            ifelse(data_long$visit=="Vis7dt",7,
+                                                                   ifelse(data_long$visit=="Vis8dt",8,
+                                                                          ifelse(data_long$visit=="Vis9dt",9,
+                                                                                 ifelse(data_long$visit=="Vis10dt",10,
+                                                                                        ifelse(data_long$visit=="Vis11dt",11,
+                                                                                               ifelse(data_long$visit=="Vis12dt",12,
+                                                                                                      ifelse(data_long$visit=="Vis13dt",13,
+                                                                                                             ifelse(data_long$visit=="Vis14dt",14,
+                                                                                                                    ifelse(data_long$visit=="Vis15dt",15,
+                                                                                                                           ifelse(data_long$visit=="Vis16dt",16,17))))))))))))))))
+
+setnames(data_long,"visit_Number","Visit_Number")
+
+data_long$year = year(data_long$Visitdate) # extract year
+
+data_long <- data_long[!is.na(data_long$Visitdate), ]
+
+rm(DF)
+```
+
+# merge all demographic variables with the visit number and year
+
+```{r}
+df1 <- merge(data_long[,c('ExtractID','Visit_Number','year')],
+             demog[,c('ExtractID','Age911','DOB','Gender','Marital_Stat_Code','edu4','income','Race4')], by ='ExtractID', all=TRUE)
+
+rm(data_long,demog)
+```
+
+# Labs results: glucose
+
+```{r}
+labs = read.csv(paste0(wd,"/MYS221017_AirPollution_Labs.csv"))
+
+labs$order_date=as.Date(labs$Order_dt,"%m/%d/%Y")
+labs$lab_date=as.Date(labs$Result_dt,"%m/%d/%Y")
+
+setDT(labs)
+labs[is.na(lab_date), lab_date := order_date]
+
+#Glucose
+Glucose=subset(labs,labs$Test_name_comb=="Glucose")
+Glucose=subset(Glucose,select=c("ExtractID","lab_date","Result_num"))
+Glucose=Glucose[!duplicated(Glucose),]
+Glucose$year= as.numeric(format(Glucose$lab_date,'%Y'))
+Glucose=aggregate(Result_num~ExtractID+year,Glucose,mean)
+setnames(Glucose,"Result_num","glucose")
+
+```
+
+# Create file of all labs
+
+```{r}
+df2 <- merge(df1,Glucose, by=c("ExtractID","year"), all=TRUE)
+
+rm(df1)
+```
+
+# Longitudinal conditions - diabetes, hypertension and cad
+
+```{r}
+diab_htn = read_excel(paste0(wd,"/MYS221017_AirPollution_Longitudinal.xlsx"))
+
+# Diabetes
+
+diab_htn$diab_1st_midpoint = as.Date(as.numeric(diab_htn$diab_1st_midpoint), origin = "1899-12-30") # change dates in long outcomes
+diab_htn$diab_year = year(diab_htn$diab_1st_midpoint) # extract year of first diagnosis 
+
+# hypertension (HTN)
+
+diab_htn$htn_1st_midpoint = as.Date(as.numeric(diab_htn$htn_1st_midpoint), origin = "1899-12-30") # change dates in long outcomes
+diab_htn$htn_year = year(diab_htn$htn_1st_midpoint) # extract year of first diagnosis 
+```
+
+```{r}
+# numeric Diabetes event 
+diab_htn$diab_event = ifelse(is.na(diab_htn$diab_year), 0, 1)
+
+# HTN Diabetes event
+diab_htn$htn_event = ifelse(is.na(diab_htn$htn_year), 0, 1)
+
+diab_htn=subset(diab_htn,select=c("ExtractID","htn_event","diab_event","htn_year",'diab_year', 'diab_1st_midpoint','htn_1st_midpoint'))
+
+```
+
+# merge with original file
+
+```{r}
+df3 = merge(df2,diab_htn , by=c("ExtractID"), all=TRUE)
+rm(df2,diab_htn,gluc)
+```
+
+## CAD
+
+```{r}
+
+long_V2 = read_xlsx(paste0(wd,"/MYS221017_AirPollution_IAMQv2On.xlsx")) %>% # Read the Excel file and create a data frame.
+  dplyr::select(ExtractID, IAMQ_10D_01_02) %>% # Select only the ExtractID and IAMQ_10D_01_02 columns.
+  dplyr::rename(cad_date = IAMQ_10D_01_02) %>% # Rename IAMQ_10D_01_02 column to cad_date.
+  dplyr::mutate(
+    cad_date = as.Date(as.numeric(cad_date), origin = "1899-12-30"), # Convert Excel numeric date format to R Date format.
+    cad_year = lubridate::year(cad_date) # Extract the year from the cad_date.
+  ) %>%
+  dplyr::group_by(ExtractID) %>% # Group data by ExtractID.
+  dplyr::summarize(cad_year = first(cad_year)) %>% # For each ExtractID, retain the first cad_year.
+  dplyr::ungroup() %>% # Remove grouping structure.
+  dplyr::select(ExtractID, cad_year) # Select only the ExtractID and cad_year columns.
+
+```
+
+```{r}
+df3 = merge(df3,long_V2 , by=c("ExtractID"), all=TRUE)
+
+df3$cad_event = ifelse(is.na(df3$cad_year), 0, 1)
+```
+
+# Exposure Assessment Questionnaire. 
+
+Occupational exposure, exposures relating to 9/11 and member's work on site, including personal protective equipment (PPE)
+
+```{r}
+EAQ=read_xlsx(paste0(wd,"/MYS221017_AirPollution_EAQ.xlsx"))
+
+dust=subset(EAQ,select=c("ExtractID","Exp4_Imputed","ArrivalDust" ,'SOC_combine',
+                         'EAQ_01_04','EAQ_08_03','EAQ_08_04',
+                         'EAQ_09_03','EAQ_09_04','EAQ_09_05','EAQ_09_06',
+                         "EAQ_09_24","EAQ_09_23"))
+
+dust$EAQ_10_04[dust$EAQ_10_04 == "N"] <- NA
+dust$EAQ_10_04[dust$EAQ_10_08 == "N"] <- NA
+dust$EAQ_10_04[dust$EAQ_10_14 == "N"] <- NA
+dust$EAQ_10_04[dust$EAQ_10_04 == "Y"] <- NA
+dust$EAQ_10_04[dust$EAQ_10_08 == "Y"] <- NA
+dust$EAQ_10_04[dust$EAQ_10_14 == "Y"] <- NA
+
+dust$EAQ_10_04<-as.numeric(dust$EAQ_10_04)
+dust$EAQ_10_08<-as.numeric(dust$EAQ_10_08)
+dust$EAQ_10_14<-as.numeric(dust$EAQ_10_14)
+
+dust$total_days_October_June =  ifelse(is.na(dust$EAQ_10_04) & is.na(dust$EAQ_10_08) & is.na(dust$EAQ_10_14),NA, rowSums(dust[,c("EAQ_10_04", "EAQ_10_08",'EAQ_10_14')], na.rm=TRUE))
+
+setnames(dust,"EAQ_01_04","Profession911")
+setnames(dust,"EAQ_08_03","Lower_Manhattan911")
+setnames(dust,"EAQ_08_04","Dust_exposure911")
+setnames(dust,"EAQ_09_03","Work_Hours911")
+setnames(dust,"EAQ_09_04","Work_Hours912")
+setnames(dust,"EAQ_09_05","Work_Hours913")
+setnames(dust,"EAQ_09_06","Work_Hours914")
+setnames(dust,"EAQ_09_23","Total_hours911_914")
+setnames(dust,"EAQ_09_24","Total_hours911_930")
+
+
+dust$first_date_in_WTC = as.Date(as.numeric(EAQ$EAQ_09_01), origin = "1899-12-30")
+dust$last_date_in_WTC = as.Date(as.numeric(EAQ$EAQ_09_02), origin = "1899-12-30")
+```
+
+## Code dust exposure
+0 no dust
+1 some dust
+2 significant amounts
+3 Directly in the cloud
+```{r}
+dust$Dust_exposure911_code=ifelse(dust$Dust_exposure911=="Directly in the cloud of dust from the collapse of the World Trade Center buildings" ,3,
+                    ifelse(dust$Dust_exposure911=="Exposed to significant amounts of dust but not directly in the cloud of dust from the collapse of the World Trade Center buildings",2,              
+                   ifelse(dust$Dust_exposure911=="Exposed to some dust but not in the cloud of dust from the collapse of the World Trade Center buildings",1,
+                          ifelse(dust$Dust_exposure911=="Not exposed to dust and not in the cloud of dust from the collapse of the World Trade Center buildings",0,NA))))
+```
+
+```{r}
+dust$Lower_Manhattan911_code=ifelse(dust$Lower_Manhattan911=="yes",1,0)
+```
+
+```{r}
+df4 = merge(df3,dust, by =c('ExtractID'), all=TRUE)
+
+rm(dust,df3,EAQ)
+```
+
+# injury
+```{r}
+# injury
+SAMQ=read_xlsx(paste0(wd,"/MYS221017_AirPollution_SAMQ.xlsx"))
+
+SAMQ=subset(SAMQ,select=c("ExtractID","SAMQ_01_01_Num"))
+SAMQ$injury = ifelse(SAMQ$SAMQ_01_01_Num == 'yes',1,
+                     ifelse(SAMQ$SAMQ_01_01_Num == 'no',0,NA))
+```
+
+# horror 
+```{r}
+# horrible experience
+
+MHDIS=read_xlsx(paste0(wd,"/MYS221017_AirPollution_MHDISv2.xlsx"))
+
+MHDIS=subset(MHDIS,select=c("ExtractID","MHDIS_02_01","MHDIS_02_02" ,'MHDIS_02_03','MHDIS_02_04'))
+# remove rows all NA (in excel all NA were stated as missing information)
+MHDIS = MHDIS[rowSums(is.na(MHDIS[,-1])) != ncol(MHDIS[,-1]), ]
+# excel file, NA are yes
+MHDIS$horror<-ifelse(is.na(MHDIS$MHDIS_02_01) | is.na(MHDIS$MHDIS_02_02) | is.na(MHDIS$MHDIS_02_03) | is.na(MHDIS$MHDIS_02_04),1, 0)
+
+```
+
+```{r}
+df4<-merge(df4,SAMQ[ , c("ExtractID", "injury")],by = 'ExtractID',all=T)
+
+df4<-merge(df4,MHDIS[ , c("ExtractID", "horror")], by = 'ExtractID',all=T)
+```
+
+# PE
+
+```{r}
+PE=read_xlsx(paste0(wd,"/MYS221017_AirPollution_PE.xlsx"))
+
+PE=subset(PE,select=c("ExtractID","Visit_Number","BMI_LBIN",'Systolic_Pressure'))
+
+PE$bmi=as.numeric(PE$BMI_LBIN) 
+
+# Maayan added this two.
+PE$bmi=ifelse(PE$bmi>47,NA,PE$bmi)
+```
+
+```{r}
+df5<-merge(df4,PE, by = c('ExtractID','Visit_Number'),all=TRUE)
+
+rm(df4,PE,MHDIS,SAMQ)
+```
+
+#  census tract–level socioeconomic variables
+
+```{r}
+ses<-readRDS('C:\\Users\\furmah01\\OneDrive - The Mount Sinai Hospital\\WTC new data 2022\\processed files\\ses_new.rds')
+```
+
+```{r}
+df6 = merge(df5, ses,by = c("ExtractID", "year"), all = TRUE )
+```
+
+# Age
+
+```{r}
+df6$DOB2=as.Date(df6$DOB,"%Y-%m-%d")
+df6$year_birth= as.numeric(format(df6$DOB2,'%Y'))
+
+df6$age = df6$year - df6$year_birth
+```
+
+
+# Save df for all responders
+
+```{r}
+
+current_date <- as.character(Sys.Date())
+
+file_name <- paste0(wd,"/processed files/preapred_full_data_", current_date, ".rds")
+
+saveRDS(df10, file_name)
+```
+
+2. Diabets outcome database creation. Follow up goes from 2003-2021. Responders with diabetes before 2003 are removed. Rows after diagnisis are removed
+
+```{r}
+data<-readRDS('C:\\Users\\furmah01\\OneDrive - The Mount Sinai Hospital\\WTC new data 2022\\processed files\\preapred_full_data_2024-09-27.rds')
+
+data=subset(data,year>=2003 & year <=2021) # year of visits
+```
+
+# Fill columns
+```{r}
+data <- data %>% 
+  group_by(ExtractID)%>%
+  fill(c(20) ,.direction = "up")
+```
+
+# create outcome
+```{r include=FALSE}
+data$status = ifelse(is.na(data$diab_year) ,0,
+                     ifelse(data$year<data$diab_year,0,1))
+```
+
+# filter people that had no visits
+```{r include=FALSE}
+filtered_df = data %>%
+  group_by(ExtractID) %>%
+  filter(!all(is.na(Visit_Number))) %>%
+  ungroup()
+```
+
+```{r include=FALSE}
+# extact rows between first and last visit/diabetes diag
+filtered_df = filtered_df %>%
+  group_by(ExtractID) %>%
+  arrange(year, .by_group=TRUE)
+
+result_df <- filtered_df %>%
+  group_by(ExtractID)%>%
+  slice(1:which.max(Visit_Number))%>%
+  ungroup()
+```
+
+```{r include=FALSE}
+# remove people that had diabetes before 2003
+# Take out people with diab diagnistic before 2003
+data_diab = result_df %>%
+  subset(diab_year >= 2003 | is.na(diab_year))
+
+# take out years after diab diagnistic 
+data_diab = data_diab %>%
+  subset(year <= diab_year | is.na(diab_year))
+
+```
+
+# save file for later analysis
+```{r}
+
+current_date <- as.character(Sys.Date())
+
+file_name <- paste0('C:/Users/furmah01/OneDrive - The Mount Sinai Hospital/WTC new data 2022/Helena - aim 1/rds files/data_diab_', current_date, ".rds")
+
+saveRDS(data_diab, file_name)
+
+```
+
+3. HTN outcome database creation. Follow up goes from 2003-2021. Responders with HTN before 2003 are removed. Rows after diagnisis are removed
+
+```{r}
+data<-readRDS('C:\\Users\\furmah01\\OneDrive - The Mount Sinai Hospital\\WTC new data 2022\\processed files\\preapred_full_data_2024-03-13.rds')
+data=subset(data,year>=2003 & year <=2021)
+```
+
+```{r}
+data <- data %>% 
+  group_by(ExtractID)%>%
+  fill(c(19) ,.direction = "up")
+```
+
+# htn outcome
+```{r include=FALSE}
+data$status = ifelse(is.na(data$htn_year) ,0,
+                     ifelse(data$year<data$htn_year,0,1))
+```
+
+```{r include=FALSE}
+filtered_df = data %>%
+  group_by(ExtractID) %>%
+  filter(!all(is.na(Visit_Number))) %>%
+  ungroup()
+```
+
+```{r include=FALSE}
+# extact rows between first and last visit/ diag
+filtered_df = filtered_df %>%
+  group_by(ExtractID) %>%
+  arrange(year, .by_group=TRUE)
+
+result_df <- filtered_df %>%
+  group_by(ExtractID)%>%
+  slice(1:which.max(Visit_Number))%>%
+  ungroup()
+```
+
+```{r include=FALSE}
+# remove people that had hypertension before 2003
+# Take out people with hypertension diagnistic before 2003
+data_htn = result_df %>%
+  subset(htn_year > 2003 | is.na(htn_year))
+
+# take out years after hypertension diagnistic 
+data_htn = data_htn %>%
+  subset(year <= htn_year | is.na(htn_year))
+```
+
+# save file for analysis
+```{r}
+# save with most recent date
+current_date <- as.character(Sys.Date())
+
+file_name <- paste0('C:/Users/furmah01/OneDrive - The Mount Sinai Hospital/WTC new data 2022/Helena - aim 1/rds files/data_htn_', current_date, ".rds")
+
+saveRDS(data_htn, file_name)
+```
+
+3. CAD outcome database creation. Follow up goes from 2003-2021. Responders with HTN before 2003 are removed. Rows after diagnisis are removed
+
+# extract stroke data
+```{r include=FALSE}
+# visit num 1
+data_V1<-read_xlsx('C:\\Users\\furmah01\\OneDrive - The Mount Sinai Hospital\\WTC new data 2022\\MYS221017_AirPollution_IAMQv1TrialDB.xlsx')
+
+# visit num 2 and forward
+data_V2<-read_xlsx('C:\\Users\\furmah01\\OneDrive - The Mount Sinai Hospital\\WTC new data 2022\\MYS221017_AirPollution_IAMQv2On.xlsx')
+```
+
+```{r}
+# Visit 1 
+data_V1=subset(data_V1,select=c("ExtractID",'Visit_Number','IAMQ_236_01','IAMQ_236_03','Smoking_Status'))
+setnames(data_V1,"IAMQ_236_01","cad")
+setnames(data_V1,"IAMQ_236_03","cad_date")
+```
+
+```{r}
+data_V1$cad_date = as.Date(as.numeric(data_V1$cad_date), origin = "1899-12-30")
+data_V1$cad_year = year(data_V1$cad_date) # extract year
+
+data_V1$cad_code<-ifelse(data_V1$cad=='yes',1,0)
+
+V1=subset(data_V1,select=c("ExtractID",'Visit_Number','cad_year','cad_code','Smoking_Status'))
+V1$cad_code<-ifelse(is.na(V1$cad_code),0,V1$cad_code)
+```
+
+```{r}
+# Visit 2
+data_V2=subset(data_V2,select=c("ExtractID",'Visit_Number','IAMQ_10D_01_00','IAMQ_10D_01_02','Smoking_Status'))
+setnames(data_V2,"IAMQ_10D_01_00","cad")
+setnames(data_V2,"IAMQ_10D_01_02","cad_date")
+
+data_V2$cad_date = as.Date(as.numeric(data_V2$cad_date), origin = "1899-12-30")
+
+data_V2$cad_year = year(data_V2$cad_date) # extract year
+
+data_V2$cad_code<-ifelse(is.na(data_V2$cad_year),0,1)
+data_V2$cad_code<-ifelse(data_V2$cad=='yes',1,data_V2$cad_code)
+
+V2=subset(data_V2,select=c("ExtractID",'Visit_Number','cad_year','cad_code','Smoking_Status'))
+V2$cad_code<-ifelse(is.na(V2$cad_code),0,V2$cad_code)
+```
+
+```{r}
+data2 <- rbind(V1,V2)
+
+rm(data_V1,data_V2,V1,V2)
+```
+
+# Add demographic variables for model
+```{r}
+data<-readRDS('C:\\Users\\furmah01\\OneDrive - The Mount Sinai Hospital\\WTC new data 2022\\processed files\\preapred_full_data_2024-03-13.rds')
+data=subset(data,year>=2003 & year <=2021)
+```
+
+```{r}
+data2<-merge(data,data2, by = c("ExtractID", "Visit_Number"),all = TRUE)
+```
+
+```{r}
+data3<-data2[!duplicated(data2), ]
+```
+
+#remove people that had no visits
+```{r include=FALSE}
+filtered_df = data3 %>%
+  group_by(ExtractID) %>%
+  filter(!all(is.na(Visit_Number))) %>%
+  ungroup()
+```
+
+```{r include=FALSE}
+# extact rows between first and last visit/ diag
+filtered_df = filtered_df %>%
+  group_by(ExtractID) %>%
+  arrange(year, .by_group=TRUE)
+
+result_df <- filtered_df %>%
+  group_by(ExtractID)%>%
+  slice(1:which.max(Visit_Number))%>%
+  ungroup()
+```
+
+```{r}
+result_df <- result_df %>% 
+  group_by(ExtractID)%>%
+  fill(c(19:20,111) ,.direction = "up")
+```
+
+# set outcome of cad
+```{r}
+
+result_df$status = ifelse(is.na(result_df$cad_year) ,0,
+                     ifelse(result_df$year<result_df$cad_year,0,1))
+
+
+result_df$diab_status = ifelse(is.na(result_df$diab_year) ,0,
+                     ifelse(result_df$year<result_df$diab_year,0,1))
+
+result_df$htn_status = ifelse(is.na(result_df$htn_year) ,0,
+                     ifelse(result_df$year<result_df$htn_year,0,1))
+```
+
+```{r include=FALSE}
+# remove people that had  before 2003
+# Take out people with  diagnistic before 2003
+data_cad = result_df %>%
+  subset(cad_year > 2003 | is.na(cad_year))
+
+# take out years after  diagnistic 
+data_cad = data_cad %>%
+  subset(year <= cad_year | is.na(cad_year))
+
+```
+
+# save file for analysis
+```{r}
+# save with most recent date
+current_date <- as.character(Sys.Date())
+
+file_name <- paste0('C:/Users/furmah01/OneDrive - The Mount Sinai Hospital/WTC new data 2022/Helena - aim 1/rds files/data_cad_', current_date, ".rds")
+
+saveRDS(data_cad, file_name)
+```
+
+4. Trajectory analysis
+
+```{r}
+data<-readRDS('C:\\Users\\furmah01\\OneDrive - The Mount Sinai Hospital\\WTC new data 2022\\processed files\\preapred_full_data_2024-03-13.rds')
+data=subset(data,year>=2003 & year <=2021)
+```
+
+# glucose trajectory
+```{r}
+# remove empty rows
+gluc<-data %>% drop_na(glucose)
+
+# remove outliers
+gluc= gluc[gluc$glucose < quantile(gluc$glucose, 0.99), ]
+
+# filter responders that have at least 4 visits
+gluc = gluc %>% 
+  group_by(ExtractID) %>% 
+  filter(n() >= 4)
+
+# create id variable
+gluc$id<-gsub(".*-","",gluc$ExtractID)
+gluc$id<-as.numeric(gluc$id)
+
+# create trajectories
+
+# first class for referance
+d_age <-lcmm(glucose~ age*Gender,random=~age, subject='id',data=gluc_full,link='thresholds')
+
+# 2 classes
+d_age2 <-lcmm(glucose~ age*Gender, ng = 2, mixture =~ age, random= ~age, B=d_age, subject='id',data=gluc_full,link='thresholds')
+
+# 3 classes
+d_age3 <-lcmm(glucose~ age*Gender, ng = 3, mixture =~ age, random= ~age, B=d_age, subject='id',data=gluc_full,link='thresholds')
+
+postprob(d_age3) # posterior probabilities of group membership
+
+# merge to the original file to create the trajectory plot
+people3 <- as.data.frame(d_age3$pprob)
+gluc2 <- merge(gluc,people3, by='id')
+gluc2$class<-as.factor(gluc2$class)
+ggplot(gluc2, aes(age, glucose, group=id, colour=class)) + geom_smooth(aes(group=class), method="loess", linewidth=0.6, se=F)  +   labs(x="x",y="y",colour="Latent Class")+  ggtitle("Glucose trajectories") + xlab('Age') + ylab("Glucose")
+```
+
+# systolic bloog pressure trajectories
+```{r}
+SP<-data %>% drop_na(Systolic_Pressure)
+SP$id<-gsub(".*-","",SP$ExtractID)
+SP$id<-as.numeric(SP$id)
+
+# filter percentile
+SP_full= SP[SP$Systolic_Pressure < 220, ]
+
+# filter to have more than 4 rows
+SP_full = SP_full %>% 
+  group_by(ExtractID) %>% 
+  filter(n() >= 4)
+
+SP_full$age<-as.numeric(SP_full$age)
+
+# 1 class for referance
+d_full <-lcmm(Systolic_Pressure~ age + Gender,random=~age, subject='id',data=SP_full, link="linear")
+
+# 2 classes
+d_full2 <-lcmm(Systolic_Pressure~ age + Gender, ng = 2, mixture =~ age, random= ~age, B=d_full, subject='id',data=SP_full, link="linear")
+
+# 3 classes
+d_full3 <-lcmm(Systolic_Pressure~ age + Gender, ng = 3, mixture =~ age, random= ~age, B=d_full, subject='id',data=SP_full, link="linear")
+
+full3 <- as.data.frame(d_full3$pprob)
+mod3 <- merge(SP_full,full3, by='id')
+mod3$class<-as.factor(mod3$class)
+ggplot(mod3, aes(age, Systolic_Pressure, group=id, colour=class)) + geom_smooth(aes(group=class), method="loess", linewidth=0.6, se=F)  +   labs(x="x",y="y",colour="Latent Class")+  ggtitle("Systolic_Pressure full dataset,3 classes") + xlab('Age') + ylab("Systolic_Pressure")
+```
+
