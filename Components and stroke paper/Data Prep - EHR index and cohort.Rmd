@@ -1,0 +1,549 @@
+---
+title: "EHR index 2022"
+author: "Helena Krasnov"
+date: "2024-03-15"
+output: html_document
+---
+This file creates the EHR index as an outcome
+
+```{r include=FALSE}
+library(lubridate)
+library(dplyr)
+library(tidyr)
+library(data.table)
+library(plyr)
+```
+
+```{r}
+enc = read.csv('C:/Users/furmah01/OneDrive - The Mount Sinai Hospital/Helena/MSDW PC patients 2011-2023/OneDrive_1_3-22-2024/ENCOUNTER.csv')
+
+enc$order_date=as.Date(enc$ENC_START_DATE,"%Y-%m-%d")
+enc$year = year(enc$order_date)
+```
+
+# outpatient
+```{r}
+#Read file
+enc2 = read.csv('C:/Users/furmah01/OneDrive - The Mount Sinai Hospital/Helena/MSDW PC patients 2011-2023/OneDrive_1_3-22-2024/ENCOUNTER_COUNT.csv')
+
+#outpatient
+outpatient=subset(enc2,select=c("MRN","COUNT_ENC_2011", "COUNT_ENC_2012", "COUNT_ENC_2013", "COUNT_ENC_2014","COUNT_ENC_2015","COUNT_ENC_2016","COUNT_ENC_2017",
+"COUNT_ENC_2018","COUNT_ENC_2019","COUNT_ENC_2020","COUNT_ENC_2021","COUNT_ENC_2022","COUNT_ENC_2023"))
+
+outpatient=outpatient[!duplicated(outpatient),]
+
+outpatient <- melt(setDT(outpatient), id.vars = c("MRN"), variable.name = "variable")
+
+outpatient$year=substr(outpatient$variable,11,21)
+outpatient$year=as.numeric(outpatient$year)
+outpatient$variable=NULL
+
+setnames(outpatient,"value","outpatient_counts")
+
+#pcp
+pcp=subset(enc2,select=c("MRN","COUNT_PCP_ENC_2011","COUNT_PCP_ENC_2012","COUNT_PCP_ENC_2013","COUNT_PCP_ENC_2014","COUNT_PCP_ENC_2015","COUNT_PCP_ENC_2016","COUNT_PCP_ENC_2017","COUNT_PCP_ENC_2018","COUNT_PCP_ENC_2019","COUNT_PCP_ENC_2020","COUNT_PCP_ENC_2021","COUNT_PCP_ENC_2022","COUNT_PCP_ENC_2023"))
+
+pcp=pcp[!duplicated(pcp),]
+
+pcp <- melt(setDT(pcp), id.vars = c("MRN"), variable.name = "variable")
+
+pcp$year=substr(pcp$variable,15,18)
+pcp$year=as.numeric(pcp$year)
+pcp$variable=NULL
+setnames(pcp,"value","pcp_counts")
+
+outpatient=merge(outpatient,pcp,by=c("MRN","year"), all = TRUE)
+outpatient$total_outpatient = outpatient$pcp_counts + outpatient$outpatient_counts
+
+rm(pcp, enc2)
+```
+
+# Having seen the same provider at least twice
+# Physician office visits recorded
+```{r}
+# all the people in the file saw a doctor
+enc$doctors = 1
+
+# number of doctors overall per year
+physician_office_visits = aggregate(doctors ~ PRIMARY_MRN + year, enc, sum)
+
+# number of doctors 
+physician_office_visits$physician_visit1_2 = ifelse(physician_office_visits$doctors == 1 | physician_office_visits$doctors == 2,1,0)
+physician_office_visits$physician_visit3_4 = ifelse(physician_office_visits$doctors == 3 | physician_office_visits$doctors == 4,1,0)
+physician_office_visits$physician_visit5 = ifelse(physician_office_visits$doctors >= 5 ,1,0)
+
+setnames(physician_office_visits,"PRIMARY_MRN","MRN")
+setnames(physician_office_visits,"doctors","total_doctors_visits")
+```
+
+```{r}
+# check this - some people have more than 200 doctors???? patient 2972601
+PRIMARY_PROVIDER_count = aggregate(doctors ~ PRIMARY_MRN + PRIMARY_PROVIDER + year, enc, sum)
+PRIMARY_PROVIDER_count$same_providor = ifelse(PRIMARY_PROVIDER_count$doctors >=2 ,1 ,0)
+setnames(PRIMARY_PROVIDER_count,"PRIMARY_MRN","MRN")
+setnames(PRIMARY_PROVIDER_count,"doctors","specific_doctors_visits")
+
+# take only people that visited more than twice the same doctor
+PRIMARY_PROVIDER_count2 = subset(PRIMARY_PROVIDER_count, same_providor == 1)
+
+rm(PRIMARY_PROVIDER_count)
+```
+
+```{r}
+providor = merge(physician_office_visits,PRIMARY_PROVIDER_count2, by = c('MRN', 'year'), all=TRUE)
+
+providor$specific_doctors_visits[is.na(providor$specific_doctors_visits)] <- 0
+providor$same_providor[is.na(providor$same_providor)] <- 0
+
+rm(PRIMARY_PROVIDER_count2,physician_office_visits)
+```
+
+# Having any ED (hospital emergency department visit) visit in the EHR
+```{r}
+# sum the number of ED per person
+ED_count <- aggregate(ED ~ PRIMARY_MRN + year, enc, sum)
+ED_count$have_ed = ifelse(ED_count$ED == 0,0,1)
+
+setnames(ED_count,"PRIMARY_MRN","MRN")
+```
+
+```{r}
+providor = merge(providor,ED_count, by = c('MRN', 'year'), all=TRUE)
+```
+
+```{r}
+outpatient = merge(outpatient,providor, by = c('MRN', 'year'), all=TRUE)
+outpatient[is.na(outpatient)] <- 0
+
+rm(providor,ED_count,enc)
+```
+
+# save incase R crashes
+```{r}
+saveRDS(outpatient,'C:\\Users\\furmah01\\OneDrive - The Mount Sinai Hospital\\Second request\\outpatient.rds')
+```
+
+```{r}
+diag = read.csv('C:/Users/furmah01/OneDrive - The Mount Sinai Hospital/Helena/MSDW PC patients 2011-2023/OneDrive_1_3-22-2024/DIAGNOSIS.csv')
+
+diag$order_date=as.Date(diag$ENCOUNTER_DATE,"%Y-%m-%d")
+diag$year = year(diag$order_date)
+```
+
+# With at least 1 diagnoses recorded in the EHR
+```{r}
+# take all patients (in and out, they all had diagnosis)
+diag$inpatient_counts=1
+diag4=aggregate(inpatient_counts~year+MRN,diag,sum)
+
+diag4$diagnosis = ifelse(diag4$inpatient_counts > 0, 1, 0)
+setnames(diag4,"inpatient_counts","diag_counts")
+```
+
+# Hospitalization(s) recorded - (inpatient) 
+```{r}
+# subset only the people that had inpatient encounters
+inpatient = subset(diag, INPATIENT_ENC == 1)
+
+# sum the number of these inpatient encounters per year per patient
+inpatient2=aggregate(inpatient_counts~year+MRN,inpatient,sum)
+
+# Hospitalization(s) recorded 1 or 2 and more
+inpatient2$hospital1 = ifelse(inpatient2$inpatient_counts == 1, 1, 0)
+inpatient2$hospital2 = ifelse(inpatient2$inpatient_counts >= 2, 1, 0)
+```
+
+```{r}
+inpatient2 = merge(inpatient2,diag4, by = c('MRN', 'year'), all=TRUE)
+inpatient2[is.na(inpatient2)] <- 0
+
+rm(diag4,inpatient)
+```
+
+# save incase R crashes
+```{r}
+saveRDS(inpatient2,'C:\\Users\\furmah01\\OneDrive - The Mount Sinai Hospital\\Second request\\inpatient.rds')
+```
+
+```{r}
+outpatient = merge(outpatient,inpatient2,by = c('MRN', 'year'), all=TRUE)
+outpatient[is.na(outpatient)] <- 0
+
+rm(inpatient2)
+```
+
+```{r}
+outpatient <- subset(outpatient, select=-c(PRIMARY_PROVIDER,specific_doctors_visits))
+outpatient=outpatient[!duplicated(outpatient),]
+outpatient = subset(outpatient, year>=2011 & year<=2023)
+```
+
+```{r}
+completed_data <- outpatient %>%
+  complete(MRN, year = 2011:2023) %>%
+  arrange(MRN, year)
+
+completed_data[is.na(completed_data)] <- 0
+```
+
+
+# Having general medical exam;
+# Pap smear or mammogram recorded
+# Colon cancer screening
+# Pneumococcal or influenza vaccination encounter
+
+# add ihd, diabetes, hypertension, copd, smoking, bmi
+```{r}
+# for each patient and year, check if there was a diagniose for
+diag$code = substr(diag$ICD10_CODE, 1, 3)
+
+diag2 <- diag %>%
+  group_by(MRN, year) %>%
+  mutate(general_medical_exam = ifelse(ICD10_CODE == 'Z00.00' | ICD10_CODE == 'Z00.01' | ICD10_CODE == 'Z01.411' | ICD10_CODE == 'Z01.419',1,0),
+
+        Mammography = ifelse(ICD10_CODE == 'Z12.31',1,0),
+        
+        Pap = ifelse(ICD10_CODE == 'Z12.72' | ICD10_CODE == 'Z11. 51' ,1,0),
+
+        Colonoscopy = ifelse(ICD10_CODE == 'Z12.11',1,0),
+
+        # ICD-9: V03.82 ICD-10: Z23 (Encounter for immunization)
+        Pneumococcal = ifelse(ICD10_CODE == 'Z23',1,0),
+        
+        Myocardial_infarction = ifelse(code == 'I21' ,1,0),
+        
+        Ischemic_heart_disease = ifelse(code == 'I20' | code == 'I21' | code == 'I22' | code == 'I23' | code == 'I24' | code == 'I25',1,0),
+        
+        Hemorrhagic_stroke = ifelse(code == 'I60' | code == 'I61'| code == 'I62',1,0),
+        
+        Ischemic_stroke = ifelse(code == 'I63' ,1,0),
+        
+        Cerebrovascular_disease = ifelse(code == 'I60' | code == 'I61' | code == 'I62' | code == 'I63' | code == 'I64' | code == 'I65' | code == 'I66' | code == 'I67' | code == 'I68' | code == 'I69',1,0),
+        
+        Diabetes = ifelse(code == 'E10' ,1,0),
+        
+        copd = ifelse(code == 'J44' ,1,0),
+        
+        hypertension = ifelse(code == 'I15' ,1,0))
+
+diag3 <- aggregate(list(general_medical_exam = diag2$general_medical_exam,
+                        Mammography = diag2$Mammography,
+                        Pap = diag2$Pap, 
+                        Colonoscopy = diag2$Colonoscopy, 
+                        Pneumococcal = diag2$Pneumococcal,
+                        Myocardial_infarction = diag2$Myocardial_infarction,
+                        Ischemic_heart_disease = diag2$Ischemic_heart_disease,
+                        Hemorrhagic_stroke = diag2$Hemorrhagic_stroke,
+                        Ischemic_stroke = diag2$Ischemic_stroke,
+                        Cerebrovascular_disease = diag2$Cerebrovascular_disease,
+                        Diabetes = diag2$Diabetes,
+                        copd = diag2$copd,
+                        hypertension = diag2$hypertension), 
+                   by = list(MRN = diag2$MRN, year =diag2$year), sum)
+
+diag3$general_medical_exam = ifelse(diag3$general_medical_exam >= 1,1,0)
+diag3$Colonoscopy = ifelse(diag3$Colonoscopy >= 1,1,0)
+diag3$Pneumococcal = ifelse(diag3$Pneumococcal >= 1,1,0)
+diag3$Mamm_pap <- ifelse(diag3$Mammography == 1 | diag3$Pap == 1 ,1,0)
+
+diag3$Myocardial_infarction = ifelse(diag3$Myocardial_infarction >= 1,1,0)
+diag3$Ischemic_heart_disease = ifelse(diag3$Ischemic_heart_disease >= 1,1,0)
+diag3$Hemorrhagic_stroke = ifelse(diag3$Hemorrhagic_stroke >= 1,1,0)
+diag3$Ischemic_stroke = ifelse(diag3$Ischemic_stroke >= 1,1,0)
+diag3$Cerebrovascular_disease = ifelse(diag3$Cerebrovascular_disease >= 1,1,0)
+diag3$Diabetes = ifelse(diag3$Diabetes >= 1,1,0)
+diag3$copd = ifelse(diag3$copd >= 1,1,0)
+diag3$hypertension = ifelse(diag3$hypertension >= 1,1,0)
+```
+
+# save incase R crashes
+```{r}
+saveRDS(diag3,'C:\\Users\\furmah01\\OneDrive - The Mount Sinai Hospital\\Second request\\diag3.rds')
+```
+
+```{r}
+outpatient2 = merge(completed_data,diag3, by = c('MRN', 'year'), all=TRUE)
+outpatient2[is.na(outpatient2)] <- 0
+rm(diag2,diag3,diag,outpatient)
+```
+
+# Distinct drugs recorded
+```{r}
+meds = read.csv('C:/Users/furmah01/OneDrive - The Mount Sinai Hospital/Helena/MSDW PC patients 2011-2023/OneDrive_1_3-22-2024/medication.csv')
+
+meds$Date <- ifelse(meds$ADMINISTRATION_DATE == 'NULL', meds$ORDER_DATE, meds$ADMINISTRATION_DATE)
+
+meds$order_date=as.Date(meds$Date,"%Y-%m-%d")
+meds$year = year(meds$order_date)
+
+meds$drugs_counts=1
+drugs=aggregate(drugs_counts~year+MRN,meds,sum)
+
+drugs$drug1_2 = ifelse(drugs$drugs_count == 1 | drugs$drugs_count == 2,1,0)
+drugs$drug3_4 = ifelse(drugs$drugs_count == 3 | drugs$drugs_count == 4,1,0)
+drugs$drug5_9 = ifelse(drugs$drugs_count >= 5 & drugs$drugs_count <= 9,1,0)
+drugs$drug10 = ifelse(drugs$drugs_count >= 10 ,1,0)
+```
+
+```{r}
+outpatient2 = merge(outpatient2,drugs, by = c('MRN', 'year'), all=TRUE)
+outpatient2[is.na(outpatient2)] <- 0
+rm(meds,drugs)
+```
+
+# Demographocs
+```{r}
+demog = read.csv('C:/Users/furmah01/OneDrive - The Mount Sinai Hospital/Helena/MSDW PC patients 2011-2023/OneDrive_1_3-22-2024/PATIENT.csv')
+
+# Age
+demog$bdate=as.Date(demog$DOB)
+demog$byear=format(demog$bdate,"%Y")
+demog$byear=as.numeric(demog$byear)
+
+# race - 
+demog$RACE= ifelse(demog$RACE=='NULL' | demog$RACE=='PATIENT DECLINED' | demog$RACE=='Other' ,'Unknown',demog$RACE)
+
+demog$black= ifelse(demog$RACE=='Black or African-American',1,0)
+
+demog$race_other = ifelse(demog$RACE=='Black or African-American' | demog$RACE== 'White',0,1) 
+
+# sex 
+demog$male=ifelse(demog$SEX=="Male",1,ifelse (is.na(demog$SEX),NA,0))
+
+demog$insurance3=ifelse(demog$INSURANCE=="MEDICAID",1,ifelse(demog$INSURANCE=="SELFPAY",2,0))
+```
+
+```{r}
+# merge only people that had demographics, other wise alot of missing
+outpatient3 = merge(outpatient2,demog, by = c('MRN'))
+```
+
+```{r}
+# record year
+outpatient3$age = outpatient3$year-outpatient3$byear
+outpatient3$age2 = ifelse(outpatient3$age >= 74,1,0)
+```
+
+# having labs
+```{r}
+labs = read.csv('C:/Users/furmah01/OneDrive - The Mount Sinai Hospital/Helena/MSDW PC patients 2011-2023/OneDrive_1_3-22-2024/labs.csv')
+
+labs$order_date=as.Date(labs$RESULT_DATE,"%Y-%m-%d")
+labs$year = year(labs$order_date)
+
+labs$labs_counts=1
+labs2=aggregate(labs_counts~year+PRIMARYMRN,labs,sum)
+
+labs2$labs_counts = ifelse(labs2$labs_counts > 0, 1, 0)
+setnames(labs2,"PRIMARYMRN","MRN")
+```
+
+```{r}
+outpatient3 = merge(outpatient3,labs2, by = c('MRN', 'year'), all=TRUE)
+outpatient3[is.na(outpatient3)] <- 0
+```
+
+#Having BMI recorded
+```{r}
+vit = read.csv('C:/Users/furmah01/OneDrive - The Mount Sinai Hospital/Helena/MSDW PC patients 2011-2023/OneDrive_1_3-22-2024/flowsheets.csv')
+
+BMI = subset(vit,MEASUREMENT == 'R BMI' )
+
+BMI$order_date=as.Date(BMI$MEASUREMENT_DTTM,"%Y-%m-%d")
+BMI$year = year(BMI$order_date)
+
+bmi_new = aggregate(as.numeric(NumericValue) ~ MRN + year, BMI, mean)
+bmi_new$bmi = 1
+setnames(bmi_new,"as.numeric(NumericValue)","BMI")
+```
+
+```{r}
+outpatient4 = merge(outpatient3,bmi_new, by = c('MRN', 'year'), all=TRUE)
+outpatient4[is.na(outpatient4)] <- 0
+rm(vit,BMI)
+```
+
+# death
+```{r}
+patient=fread('C:/Users/furmah01/OneDrive - The Mount Sinai Hospital/Helena/MSDW PC patients 2011-2023/OneDrive_1_3-22-2024/PATIENT.csv')
+patient$epic_death_year=substr(patient$DECEASED_DATE_EPIC,1,4)
+patient$epic_death_year=as.numeric(patient$epic_death_year)
+
+patient$ny_death_year=substr(patient$DECEASED_DATE_SSDI,1,4)
+patient$ny_death_year=as.numeric(patient$ny_death_year)
+
+patient$death_year=ifelse(!is.na(patient$ny_death_year),patient$ny_death_year,patient$epic_death_year)
+
+patient=subset(patient,select=c("MRN","death_year"))
+
+outpatient4=join(outpatient4,patient,by="MRN")
+```
+
+
+# calculate index based on 2022 paper
+```{r}
+# subset only for the index
+a = subset(outpatient, select=c("MRN", "year",'same_providor','have_ed','hospital1','hospital2','diagnosis','general_medical_exam','Mamm_pap','Colonoscopy','Pneumococcal','drug1_2','drug3_4','drug5_9','drug10','black','race_other','male','age2','physician_visit1_2','physician_visit3_4','physician_visit5'))
+```
+
+```{r}
+EHR = try
+# Intercept  0.010
+
+# Having seen the same provider twice 0.03
+
+# Having general medical exam* 0.1 ICD10 = Z0000, Z0001, Z01411, Z01419
+
+# Having BMI recorded 0.26
+
+# Having at least one diagnosis recorded 0.01
+
+# Having any ED visit -0.02 ----- missing
+
+# Hospitalization(s) recorded
+# 1 0.12
+# 2 and more 0.12
+
+# Physician office visits recorded
+# 1–2 0.06
+# 3–4 0.13
+# 5 and more 0.2
+
+# Distinct drugs recorded
+# 1-2 0.06
+# 3-4 0.17
+# 5-9 0.22
+# 10 and more 0.22
+
+# Pap smear (ICD10 = ) or mammogram (ICD10 = Z1231) recorded 0.13 
+
+# Colon cancer screening 0.05
+
+# Pneumococcal or influenza vaccination encounter 0.07
+
+# Age at least 74 years (at cohort entry) -0.02
+
+# Male 0.02
+
+# Black 0.04
+# other 0.02
+ 
+# race missing
+EHR$index = 0.01 + 0.03 * EHR$same_providor + 0.1 * EHR$general_medical_exam + 0.26 * EHR$bmi + 0.1 * EHR$diagnosis +0.12 * EHR$hospital1 + 0.12 * EHR$hospital2 + 0.6 *EHR$physician_visit1_2 + 0.13* EHR$physician_visit3_4 + 0.2*EHR$physician_visit5 + 0.06*EHR$drug1_2 + 0.17*EHR$drug3_4 + 0.22*EHR$drug5_9 + 0.22* EHR$drug10 + 0.13 * EHR$Mamm_pap + 0.05*EHR$Colonoscopy + 0.07*EHR$Pneumococcal - 0.02 *EHR$age2 + 0.02* EHR$male + 0.04 * EHR$black + 0.02* EHR$race_other-0.2*EHR$have_ed
+
+summary(EHR$index)
+```
+
+```{r}
+saveRDS(EHR,'C:\\Users\\furmah01\\OneDrive - The Mount Sinai Hospital\\Second request\\EHR_index_2022_full_DATA2.rds')
+```
+
+# create cohort
+# insert data with EHR index
+```{r}
+EHR = subset(EHR,year >=2011 & year<=2019)
+length(unique(EHR$MRN))
+```
+
+# remove extreme bmi values
+```{r}
+# Function to replace extreme BMI values with the previous year's value
+replace_extreme_bmi <- function(bmi_vector) {
+  for (i in 2:length(bmi_vector)) {
+    if (bmi_vector[i] > 50 || bmi_vector[i] < 16) {
+      bmi_vector[i] <- bmi_vector[i - 1]
+    }
+  }
+  return(bmi_vector)
+}
+
+EHR <- EHR %>%
+  group_by(MRN) %>%
+  mutate(BMI = replace_extreme_bmi(BMI))
+
+# replace all zeros with NA
+EHR$BMI2 = ifelse(EHR$BMI == 0, NA, EHR$BMI)
+```
+
+```{r}
+# relevel smoking
+EHR$smoking= ifelse(EHR$SMOKING_STATUS=='Never',0,
+                   ifelse(EHR$SMOKING_STATUS=='NULL' | EHR$SMOKING_STATUS=='Unknown' ,2, 1))
+
+EHR$race5=(ifelse(EHR$RACE=='White',0,
+                   ifelse(EHR$RACE=='Black or African-American',1,
+                          ifelse(EHR$RACE=='ASIAN'|EHR$RACE=='Other Asian',2,3))))
+```
+
+```{r}
+#ses aggregated per MRN
+ses = readRDS('C:\\Users\\furmah01\\OneDrive - The Mount Sinai Hospital\\Helena\\MSDW PC patients 2011-2023\\generated files\\SES MSDW2024.rds')
+ses = subset(ses,year >=2011 & year<=2019)
+
+ses$pct_poverty = ses$POV/ ses$POP
+ses$pct_black = ses$HBAA_10/ ses$POP
+ses$pct_NoHS = ses$NoHS/ ses$POP
+
+ses=subset(ses,select=c('MRN',"year","zipcode",'pct_poverty','pct_black','pct_NoHS'))
+
+ses= aggregate(.~ MRN+year,ses,mean)
+```
+
+```{r}
+ses_kev = readRDS('C:\\Users\\furmah01\\OneDrive - The Mount Sinai Hospital\\WTC new data 2022\\processed files\\ses.rds')
+ses_kev = subset(ses_kev,year >=2011 & year<=2019)
+ses_kev=subset(ses_kev,select=c("year",'MEDHH','Zip'))
+setnames(ses_kev,'Zip',"zipcode")
+ses_kev$zipcode = as.integer(ses_kev$zipcode)
+```
+
+#merge the two
+```{r}
+aa = aggregate(MEDHH~ year + zipcode,ses_kev, mean)
+ses2 = merge(ses,aa,by=c('year','zipcode'),all.x=TRUE)
+ses2=ses2[!duplicated(ses2),]
+```
+
+```{r}
+EHR2 = merge(EHR,ses2,by=c('MRN','year'),all.x=TRUE)
+#EHR2=EHR2[!duplicated(EHR2),]
+```
+
+# add components exposure
+```{r}
+comp = readRDS('C:\\Users\\furmah01\\OneDrive - The Mount Sinai Hospital\\Helena\\MSDW PC patients 2011-2023\\generated files\\comp_exposures_msdw2024.rds')
+comp = subset(comp,year >=2011 & year<=2019)
+
+comp_agg = aggregate(.~ MRN+year,comp,mean)
+
+EHR3=merge(EHR2,comp,by=c("MRN",'year'),all.x=TRUE)
+length(unique(EHR3$MRN))
+```
+
+```{r}
+setnames(EHR3,"final.predicted.br","Br")
+setnames(EHR3,"final.predicted.no3","NO3")
+setnames(EHR3,"final.predicted.ca","Ca")
+setnames(EHR3,"final.predicted.cu","Cu")
+setnames(EHR3,"final.predicted.fe","Fe")
+setnames(EHR3,"final.predicted.k","K")
+setnames(EHR3,"final.predicted.ni","Ni")
+setnames(EHR3,"final.predicted.pb","Pb")
+setnames(EHR3,"final.predicted.si","Si")
+setnames(EHR3,"final.predicted.z","Z")
+setnames(EHR3,"final.predicted.oc","Oc")
+setnames(EHR3,"final.predicted.v","V")
+setnames(EHR3,"final.predicted.ec","Ec")
+setnames(EHR3,"final.predicted.nh4","NH4")
+setnames(EHR3,"final.predicted.so4","SO4")
+
+```
+
+```{r}
+saveRDS(EHR3,'C:\\Users\\furmah01\\OneDrive - The Mount Sinai Hospital\\Helena\\MSDW PC patients 2011-2023\\generated files\\cohort_database.rds')
+```
+
+
+
+
+
