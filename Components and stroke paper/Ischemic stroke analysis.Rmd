@@ -27,7 +27,7 @@ EHR2=EHR2 %>% mutate(sno = as.numeric(factor(MRN)))
 EHR3=EHR3 %>% mutate(sno = as.numeric(factor(MRN)))
 ```
 
-# Descriptive statistics of population for EHR3
+# Table 1: Descriptive statistics of population for EHR3 (last encounter model)
 ```{r eval=FALSE, include=FALSE}
 my.render.cont <- function(x) {
     with(stats.default(x), 
@@ -52,11 +52,11 @@ year_followup3$Ischemic_stroke<-as.factor(year_followup3$Ischemic_stroke)
 year_followup3$smoking = as.factor(year_followup3$smoking)
 
 year_followup3$outcome = 'Descriptive Statistics'
-a = table1(~ age + BMI2 +male + race5  +   Ischemic_stroke + pct_poverty + pct_black+ pct_NoHS + MEDHH + smoking | outcome , data=year_followup3,overall=F,render.continuous=my.render.cont, render.categorical=my.render.cat)
-a
+table1(~ age + BMI2 +male + race5  +   Ischemic_stroke + pct_poverty + pct_black+ pct_NoHS + MEDHH + smoking | outcome , data=year_followup3,overall=F,render.continuous=my.render.cont, render.categorical=my.render.cat)
+
 ```
 
-# supp 1. population characteristic by EHR2
+# population characteristic by EHR2
 ```{r eval=FALSE, include=FALSE}
 quantile(EHR2$index, c(0.25,0.75),na.rm=TRUE)
 EHR2$index_group = ifelse(EHR2$index >= 0.6,1,0)
@@ -69,9 +69,8 @@ year_followup2$insurance3<-as.factor(year_followup2$insurance3)
 year_followup2$race5<-as.factor(year_followup2$race5)
 year_followup2$Ischemic_stroke<-as.factor(year_followup2$Ischemic_stroke)
 
-a = table1(~ race5  + male + BMI2 +pct_poverty + pct_black+ pct_NoHS + MEDHH + age | index_group , data=EHR2,overall=F,render.continuous=my.render.cont, render.categorical=my.render.cat)
+table1(~ race5  + male + BMI2 +pct_poverty + pct_black+ pct_NoHS + MEDHH + age | index_group , data=EHR2,overall=F,render.continuous=my.render.cont, render.categorical=my.render.cat)
 
-a
 ```
 
 #Define the components
@@ -93,7 +92,7 @@ comp_mixture <- c("Biomass Burning","Oil Combustion","Metal Industry", "Other In
 ```{r eval=FALSE, include=FALSE}
 corr_mix = c("Br",  "Ca", "Cu",  "Fe", "K", "Ni", "Pb",  "Si", "V",   "Zn", "Ec",  "NH4", "NO3", "Oc","SO4", 'X1_app' , 'X2_app' ,  'X3_app' , 'X4_app' , 'X5_app')
 
-df_corr = subset(EHR2, select = (corr_mix))
+df_corr = subset(EHR3, select = (corr_mix))
 
 output_file_path <- "C:/Users/furmah01/OneDrive - The Mount Sinai Hospital/Helena/MSDW PC patients 2011-2023/EHR Data-Continuity/Chemosphere Manuscript/Review/correlation_plot_new.png"
 png(filename = output_file_path, width = 900, height = 800)
@@ -114,7 +113,7 @@ dev.off()
 ```{r eval=FALSE, include=FALSE}
 listvars=c('Br', 'Ca' ,'Cu', "Fe", "K", "Ni", "Pb", "Si", "V", "Zn", "Ec", "NH4", "NO3", "Oc", "SO4",'X1_app','X2_app','X3_app','X4_app','X5_app')
 
-CreateTableOne(vars=listvars,data=EHR2)
+CreateTableOne(vars=listvars,data=EHR3)
 ```
 
 # Supp figure 1 - nonliear dose response associations for components
@@ -130,7 +129,7 @@ for (i in seq_along(mixture)) {
  form <- paste0(
     "Ischemic_stroke ~ s(", comp, ", bs='ps')+ as.factor(year) + as.factor(male) + as.factor(race5)  + as.factor(smoking)+ s(age)+ pct_poverty + pct_black + pct_NoHS+ MEDHH+s(sno,bs='re')")
  
-  mod = bam(as.formula(form), data = EHR2, family = poisson)
+  mod = bam(as.formula(form), data = EHR3, family = poisson)
   # Calculate 5th and 95th percentiles of 'comp'
   p1 <- quantile(EHR2[[comp]], 0.025,na.rm=TRUE)
   p2 <- quantile(EHR2[[comp]], 0.975,na.rm=TRUE)
@@ -147,7 +146,7 @@ dev.off()
 # Supp figure 1 - nonliear dose response associations for NMF
 ```{r}
 # NMF
-mod = bam(Ischemic_stroke ~ s(X1_app)+s(X2_app)+s(X3_app)+s(X4_app)+s(X5_app)+ as.factor(year) + as.factor(male) + as.factor(smoking)+ as.factor(race5)  + s(age)+ pct_poverty + pct_black + pct_NoHS+ MEDHH+s(sno,bs='re'), data = EHR2, family = poisson)
+mod = bam(Ischemic_stroke ~ s(X1_app)+s(X2_app)+s(X3_app)+s(X4_app)+s(X5_app)+ as.factor(year) + as.factor(male) + as.factor(smoking)+ as.factor(race5)  + s(age)+ pct_poverty + pct_black + pct_NoHS+ MEDHH+s(sno,bs='re'), data = EHR3, family = poisson)
 
 png("C:/Users/yitshm01/OneDrive - The Mount Sinai Hospital/Maayans lab/Helena/MSDW PC patients 2011-2023/EHR Data-Continuity/Chemosphere Manuscript/Review/spline_NMF_4factor.png",res=300,width=20,height=10,unit="in")
 par(mfrow = c(2,3)) 
@@ -235,7 +234,7 @@ for (i in seq_along(mixture)) {
 row.names(table_comp) <- NULL
 ```
 
-# EHR2 two year gap model
+# Table 3: EHR2 two year gap model
 ```{r eval=FALSE, include=FALSE}
 # No Br
 table_comp2 = data.frame()
@@ -343,7 +342,7 @@ table_results_1$exposure <- gsub("[0-9]+", "", table_results_1$exposure)
 ```
 
 
-# sources comperison models - two year gap model
+# Table 4: sources comperison models - two year gap model
 ```{r}
 iqrs2 <- sapply(variables, function(var) IQR(EHR2[[var]], na.rm = TRUE))
 
