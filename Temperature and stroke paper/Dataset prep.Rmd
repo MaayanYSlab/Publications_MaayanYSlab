@@ -1,0 +1,89 @@
+---
+title: "set up case time series"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+library(dlnm) ; library(gnm) ; library(mgcv) ; library(pbs)
+library(data.table) ; library(scales)
+library(splines)
+library(dplyr);library(plyr); library(fst);library(readxl)
+```
+
+#Load exposure file
+```{r}
+data = readRDS('C:\\Users\\furmah01\\OneDrive - The Mount Sinai Hospital\\Prepared data\\exposures.rds')
+summary(data$date)
+summary(data$pm25)
+#Event year
+data$year=format(data$date,"%Y")
+data$year=as.numeric(data$year)
+summary(data$year)
+```
+
+#Keep 2010-2019 (cases start in 2011 but keep 2010 for now to calculate the lags for Jan 2011)
+```{r }
+data=subset(data,year>=2010 & year<=2020)
+```
+
+#Keep 1st event per person
+```{r , echo=FALSE}
+
+#Link covariates
+
+df_events <- read_excel("C:/Users/furmah01/OneDrive - The Mount Sinai Hospital/Original data/MSD-1332_Final_Resultset.xlsx", sheet = "Primary admissions")
+
+
+df_sociodem = read_excel("C:/Users/furmah01/OneDrive - The Mount Sinai Hospital/Original data/MSD-1332_Final_Resultset.xlsx", sheet = "sociodemogrhic")
+
+df_events = merge(df_events, df_sociodem, by = c("MRN", "ADMISSION_DATE"))
+rm(df_sociodem)
+df_events$date=format(df_events$ADMISSION_DATE,"%m-%d-%Y")
+df_events$date <- as.Date(df_events$date, format="%m-%d-%Y")
+df_events=setDT(df_events)[, min.date := min(date), by = MRN]
+df_events$min.date <- as.Date(df_events$min.date, format="%m-%d-%Y")
+df=subset(df_events,date==min.date)
+df=df[!duplicated(df$MRN),]
+df$date=NULL
+data2=join(data,df,by="MRN")
+```
+
+#Define event day
+```{r , echo=FALSE}
+data2$event=ifelse(data2$date==data2$min.date,1,0)
+table(data2$event)
+```
+
+#season
+```{r , echo=FALSE}
+
+#Month
+data2$month=format(data2$date,"%m")
+data2$month=as.numeric(data2$month)
+summary(data2$month)
+
+data2$season=ifelse(data2$month==12|data2$month<3,1,
+                        ifelse(data2$month>=3 & data2$month<=5,2,
+                               ifelse(data2$month>=6 & data2$month<=8,3,4)))
+table(data2$season)
+```
+#stratum
+```{r , echo=FALSE}
+data2$stratum <- with(data2, factor(paste(MRN, year, month,sep="-")))
+```
+
+#Make sure to keep 2010 days as the max n of lags (currently 30 days)
+```{r , echo=FALSE}
+data3=subset(data2, year>2010|year==2010&month==12)
+
+data3$day=format(data3$date,"%d")
+data3$day = str_remove(data3$day, "^0+")
+```
+
+# Save for later
+```{r}
+
+data3 = readRDS('C:\\Users\\furmah01\\OneDrive - The Mount Sinai Hospital\\Prepared data\\Helena_data_Temp_stroke.rds')
+```
+
+

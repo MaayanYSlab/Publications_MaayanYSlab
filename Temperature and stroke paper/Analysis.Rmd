@@ -1,0 +1,710 @@
+---
+title: "Untitled"
+author: "Helena Krasnov"
+date: "2024-05-23"
+output: html_document
+---
+# tutorial -  https://cran.r-project.org/web/packages/dlnm/vignettes/dlnmTS.pdf
+# when linear - at: includes all values
+
+# papers to follow
+# https://www.ncbi.nlm.nih.gov/pmc/articles/PMC7807497/ - IS and temp 7day lag
+
+```{r setup, include=FALSE}
+library(dlnm) ; library(gnm) ; library(mgcv) 
+library(data.table) ;library(purrr)
+library(dplyr);library(plyr); library(readxl)
+```
+
+# Temperature data. Daily
+```{r}
+data = readRDS('C:\\Users\\furmah01\\OneDrive - The Mount Sinai Hospital\\Helena\\MSDW PC patients 2011-2023\\generated files\\Temperature and cvd\\Helena_data_Temp_stroke.rds')
+
+
+# leave only first row to merge with demographics
+data_t = data %>% group_by(MRN) %>% slice(1)
+```
+
+# demographics
+```{r}
+df <- read_excel("C:/Users/furmah01/OneDrive - The Mount Sinai Hospital/Original data/MSD-2117.xlsx")
+
+df$year=format(df$DOB,"%Y")
+df$year=as.numeric(df$year)
+
+df$age = year.x-df$year
+```
+
+```{r}
+data_t2 = merge(data_t, df, by='MRN')
+```
+
+# relevel variables
+```{r}
+#Race
+data_t2$race5=(ifelse(data_t2$`Race Group`=='WHITE'|data_t2$`Race Group`=='White',1,
+                   ifelse(data_t2$`Race Group`=='AFRICAN-AMERICAN'| data_t2$`Race Group`=='Black or African-American',2,
+                          ifelse(data_t2$`Race Group`=='Asian'|data_t2$`Race Group`=='Other Asian'|data_t2$`Race Group`=='ASIAN',3,
+                                 ifelse(data_t2$`Race Group`=='UNKNOWN'|data_t2$`Race Group`=='Unknown'|data_t2$`Race Group`=='PATIENT DECLINED'
+                                        |data_t2$`Race Group`=='NULL',5,4)))))
+
+data_t2$male <- ifelse(data_t2$Sex == "Male", 1 ,ifelse(data_t2$Sex == "Female", 0, NA))
+```
+
+# Table 1: Population characteristics (2011-2019)
+```{r}
+library(tableone)
+
+## Make categorical variables factors
+varsToFactor <- c('code','season','Sex','race5')
+data_t2[varsToFactor] <- lapply(data_t2[varsToFactor], factor)
+
+## Create a variable list
+vars <- c('code','season','Sex','race5','age')
+
+## Create Table 1 stratified by trt
+tableOne <- CreateTableOne(vars = vars, data = data_t2)
+print(tableOne)
+```
+
+# back to original filw with temperatures
+```{r}
+data$diurnal =  data$maxtemp-data$mintemp
+```
+
+# Table 2. Summary statistics of exposures
+```{r}
+#data$diurnal =  data$maxtemp-data$mintemp
+
+a = data %>% mutate(group = case_when(diurnal  <= 6  ~ 'Group 1',
+                                      diurnal  >= 6.01 & diurnal  <= 10 ~ 'Group 2',
+                                      diurnal  >= 10.01  ~ 'Group 3')) %>%
+                                      group_by(group)
+
+varsToFactor <- c('season')
+a[varsToFactor] <- lapply(a[varsToFactor], factor)
+
+my.render.cont <- function(x) {
+    with(stats.default(x), 
+         c("",
+          "Mean (SD)" = sprintf("%s (%s)",
+                                round_pad(MEAN, 2),
+                                round_pad(SD, 2))))
+}
+
+my.render.cat <- function(x) { 
+  sub('.', '.', c("", sapply(stats.default(x), 
+  function(y) with(y, sprintf("%d (%0.2f %%)", FREQ, PCT)))), fixed = TRUE) 
+}
+
+a$outcome = 'Descriptive Statistics'
+table1(~ maxtemp  + mintemp + meantemp + pm25| group , data=a,overall=F,render.continuous=my.render.cont, render.categorical=my.render.cat, render.missing = NULL)
+```
+
+Analysis
+
+# create stratum for the model
+```{r}
+data$stratum2 <- with(data, factor(paste(MRN, year, sep="-")))
+```
+
+# find quantiles for analysis plots
+```{r}
+# take 0.5% and 99.5% for plots
+quantile(data$meantemp, c(0.005,0.25,0.5,0.75,0.995),na.rm=TRUE) # range(0.05:99.5): -9:30
+quantile(data$maxtemp, c(0.005,0.25,0.5,0.75,0.995),na.rm=TRUE) # range(0.05:99.5): -6:35
+quantile(data$mintemp, c(0.005,0.25,0.5,0.75,0.995),na.rm=TRUE)
+# -13:25
+quantile(data$diurnal, c(0.005,0.25,0.5,0.75,0.995),na.rm=TRUE) # range(0.05:99.5): 1:17
+
+# max temp
+#  10%   90% 
+# 3.43 30.26
+
+# diurnal
+# 0.5%   25%   50%   75% 99.5% 
+# 1.25  5.83  7.99 10.08 16.75
+
+
+# Median mean temp 13.32
+# Median max temp 17.7
+# Median duirnal temp 7.99
+# Median min temp 9.15
+```
+
+# Supplementary Table 1. Descriptive statistics of temperature comparing diurnal temperature range quantiles
+```{r}
+a = data %>% mutate(group = case_when(diurnal  <= 6  ~ 'Group 1',
+                                      diurnal  >= 6.0000001 & diurnal  <= 10 ~ 'Group 2',
+                                      diurnal  >= 10.000001  ~ 'Group 3')) %>%
+                                      group_by(group) 
+
+agg <- aggregate(list(a$meantemp, a$mintemp, a$maxtemp, a$pm25), by = list(a$group), mean)
+
+colnames(agg) = c('dtr group','season','mean','min','max','pm')
+
+prop.table(table(a$group,a$season), margin = 1)*100
+```
+
+```{r}
+ggplot(a, aes(x=meantemp, y=season, fill=group)) + 
+    geom_boxplot()
+```
+
+# Figure #1 temperature distribution
+```{r}
+tiff("C:/Users/furmah01/OneDrive - The Mount Sinai Hospital/Helena/exposure data/Temp an MI/results/Fig1_distribution.tif",res=300,width=7,height=10,unit="in")
+
+p1=ggplot(data, aes(x=meantemp)) + geom_density()+ xlab("Mean temperature") + theme_classic()+
+scale_y_continuous(name = "Density", limits = c(0, 0.08))+
+theme(text = element_text(size=20))
+
+p2=ggplot(data, aes(x=maxtemp)) + geom_density()+ xlab("Maximum temperature") + theme_classic()+
+scale_y_continuous(name = "Density", limits = c(0, 0.08))+
+theme(text = element_text(size=20))
+
+p3=ggplot(data, aes(x=diurnal)) + geom_density()+ xlab("DTR") + theme_classic()+
+scale_y_continuous(name = "Density")+
+theme(text = element_text(size=20))
+
+p4=ggplot(data, aes(x=mintemp)) + geom_density()+ xlab("Minimum temperature") + theme_classic()+
+scale_y_continuous(name = "Density")+
+theme(text = element_text(size=20))
+
+grid.arrange(p1, p2,p4, p3, nrow=4)
+dev.off()
+```
+
+#subset outcomes
+```{r , echo=FALSE}
+df_MI = subset(data, code == "I21")
+df_stroke = subset(data, code == "I63")
+```
+
+# Supplementary Table 2. The cumulative associations between ischemic stroke and daily mean temperature, daily maximum temperature, daily minimum temperature, and diurnal temperature range exposures.
+```{r}
+# linear for CI mean temp
+cbpm_st <- crossbasis(df_stroke$meantemp, lag=6, argvar = list(fun="lin"),arglag=list(fun = "ns",df=3), group=df_stroke$MRN)
+mod_st <- gnm(event ~ cbpm_st + pm25 +  as.factor(season), eliminate=stratum2, data=df_stroke, family=binomial)
+
+# model maximal
+cbpm_st_max <- crossbasis(df_stroke$maxtemp, lag=6, argvar = list(fun="lin"),arglag=list(fun = "ns",df=3), group=df_stroke$MRN)
+mod_st_max <- gnm(event ~ cbpm_st_max + pm25+  as.factor(season), eliminate=stratum2, data=df_stroke, family=binomial)
+
+# model diurnal
+cbpm_stroke <- crossbasis(df_stroke$diurnal, lag=6, argvar = list(fun="lin"),arglag=list(fun = "ns",df=3), group=df_stroke$MRN)
+mod_stroke <- gnm(event ~ cbpm_stroke + pm25+  as.factor(season) , eliminate=stratum2, data=df_stroke, family=binomial)
+
+# model min
+min_stroke <- crossbasis(df_stroke$mintemp, lag=6, argvar = list(fun="lin"),arglag=list(fun = "ns",df=3), group=df_stroke$MRN)
+mod_min <- gnm(event ~ min_stroke + pm25+  as.factor(season) , eliminate=stratum2, data=df_stroke, family=binomial)
+```
+
+# overall RR 
+```{r}
+# because it is linear - calculate overall RR in the lowest point
+cppm_st <- crosspred(cbpm_st, mod_st, at=-9:30, cen=0,cumul=TRUE)
+#Cumulative effect
+with(cppm_st,cbind(allRRfit,allRRlow,allRRhigh)["1",])
+
+# maximal
+cppm_st_max <- crosspred(cbpm_st_max, mod_st_max, at=-6:35, cen=0,cumul=TRUE)
+with(cppm_st_max,cbind(allRRfit,allRRlow,allRRhigh)["1",])
+with(pred.all,cbind(matRRfit,matRRlow,matRRhigh)["1",])
+# Diurnal
+a <- crosspred(cbpm_stroke, mod_stroke, at=1:17, cen=0,cumul=TRUE)
+with(a,cbind(allRRfit,allRRlow,allRRhigh)["1",])
+
+# min
+a <- crosspred(min_stroke, mod_min, at=-13:25, cen=0,cumul=TRUE)
+with(a,cbind(allRRfit,allRRlow,allRRhigh)["1",])
+```
+
+
+# Fig #2 stroke and cumulative response
+```{r}
+tiff("C:/Users/furmah01/OneDrive - The Mount Sinai Hospital/Helena/exposure data/Temp an MI/results/stroke_comulative.tif",res=300,width=7,height=10,unit="in", compression = "lzw")
+
+par(mfrow=c(4,1))
+
+# Mean temp
+cppm_st <- crosspred(cbpm_st, mod_st, at=-9:30, cen=-9,cumul=FALSE)
+plot(cppm_st, var=-8, "overall", xlab="Mean temperature", ylab="OR (95% CI)", col=4,
+     main="(A)",cex.lab=1.5,cex.axis=1.2)
+
+# max temp
+cppm_st_max <- crosspred(cbpm_st_max, mod_st_max, at=-6:35, cen=-6,cumul=FALSE)
+plot(cppm_st_max, var=-5, "overall", xlab="Maximum temperature", ylab="OR (95% CI)", col=4,
+     main="(B)",cex.lab=1.5,cex.axis=1.2)
+
+# minimal
+cppm_stroke <- crosspred(min_stroke, mod_min, at=-13:25, cen=-13,cumul=FALSE)
+plot(cppm_stroke, var=-14, "overall", xlab="Minimum temperature", ylab="OR (95% CI)", col=4,
+     main="(C)",cex.lab=1.5,cex.axis=1.2)
+
+# diurnal
+cppm_stroke <- crosspred(cbpm_stroke, mod_stroke, at=1:17, cen=1,cumul=FALSE)
+plot(cppm_stroke, var=2, "overall", xlab="DTR", ylab="OR (95% CI)", col=4,
+     main="(D)",cex.lab=1.5,cex.axis=1.2)
+
+dev.off()
+```
+
+# Fig #3 stroke lags. 
+```{r}
+tiff("C:/Users/furmah01/OneDrive - The Mount Sinai Hospital/Helena/exposure data/Temp an MI/results/stroke_lags.tif",res=300,width=7,height=10,unit="in")
+
+par(mfrow=c(4,1))
+
+#For 5-6 degrees 5th percentile
+cppm_st <- crosspred(cbpm_st, mod_st, at=-9:30, cen=0,cumul=FALSE)
+plot(cppm_st, var=1, ci="b", type="p", ylab="OR (95% CI)", col=4, pch=19, cex=1.7,
+     xlab="Lag", main="(A)", lab=c(3,5,7), cex.lab=1.5,cex.axis=1.2)
+
+# for 10th percentile
+cppm5_st_max <- crosspred(cbpm_st_max, mod_st_max, at=-6:35, cen=0,cumul=FALSE)
+plot(cppm5_st_max, var=1, ci="b", type="p", ylab="OR (95% CI)", col=4, pch=19, cex=1.7,
+     xlab="Lag", main="(B)", lab=c(3,5,7),cex.lab=1.5,cex.axis=1.2)
+
+# for 10th percentile
+cppm5_st_min <- crosspred(cbpm_st_max, mod_st_max, at=-13:25, cen=0,cumul=FALSE)
+plot(cppm5_st_min, var=1, ci="b", type="p", ylab="OR (95% CI)", col=4, pch=19, cex=1.7,
+     xlab="Lag", main="(C)", lab=c(3,5,7),cex.lab=1.5,cex.axis=1.2)
+
+cppm_st_dui <- crosspred(cbpm_stroke, mod_stroke, at=1:17, cen=0,cumul=TRUE)
+plot(cppm_st_dui, var=1, ci="b", type="p", ylab="OR (95% CI)", col=4, pch=19, cex=1.7,
+     xlab="Lag", main="(D)", lab=c(3,5,7),cex.lab=1.5,cex.axis=1.2)
+
+dev.off()
+```
+
+# create variable for single lag
+```{r , echo=FALSE}
+generate_vars <- function(data, var_name) {
+  data %>%
+    mutate(
+      !!paste0(var_name, "_lag1") := lag(.data[[var_name]], 1),
+      !!paste0(var_name, "_lag2") := lag(.data[[var_name]], 2))
+}
+
+# change in accordance to exposure
+columns_to_process1 <- c("meantemp")
+```
+
+#gnm with just lags 0-1
+#Calculate lag 1 per person and add
+```{r , echo=FALSE}
+#for mean
+df_stroke1 <- df_stroke %>%
+  group_by(MRN) %>%
+  reduce(columns_to_process1, .init = ., .f = generate_vars)
+```
+
+# lag0 ; lag1 ; lag2
+```{r}
+exposures = c("meantemp","meantemp_lag1",'meantemp_lag2')
+
+data=as.data.table(data)
+table = data.frame()
+
+for (comp in exposures){
+  
+  form = paste0("event ~ ", comp, "+ pm25 +  as.factor(season)"
+  )
+  
+  mod = gnm(as.formula(form), eliminate=stratum2, data = df_stroke1, family = binomial() )
+  smod=as.data.frame(summary(mod)$coefficients)
+  table = rbind(table, smod)
+}
+
+  models=as.data.table(table,keep.rownames = TRUE)
+
+
+# Calculate HR and 95% CI per IQR increase
+  models$HR <- exp(models$Estimate) 
+  models$LCI <- exp((models$Estimate - 1.96 * models$`Std. Error`))  
+  models$UCI <- exp((models$Estimate + 1.96 * models$`Std. Error`))
+
+  models$HR <- format(round(models$HR, 3), nsmall = 3)
+  models$LCI <- format(round(models$LCI, 3), nsmall = 3)
+  models$UCI <- format(round(models$UCI, 3), nsmall = 3)
+  models$`Pr(>|z|)` <- format(round(models$`Pr(>|z|)`, 2), nsmall = 2)
+  models=subset(models,rn=='meantemp' | rn=='meantemp_lag1'| rn=='meantemp_lag2')
+  models <- subset(models, select = c("rn", "HR", "LCI", "UCI", "Pr(>|z|)"))
+# Print the resulting table
+  print(models)
+```
+
+
+
+
+######################## MI
+# Supplementary Table 3. The associations between myocardial infarction and daily mean temperature, daily maximum temperature, daily minimum temperature, and diurnal temperature range exposures.
+```{r}
+# non linear for MI mean temp
+mi <- crossbasis(df_MI$meantemp, lag=6, argvar=list(df=2),arglag=list(fun = "ns",df=3), group=df_MI$MRN)
+mod <- gnm(event ~ mi + pm25+ as.factor(season), eliminate=stratum2, data=df_MI, family=binomial)
+
+# maximal model
+mi_max <- crossbasis(df_MI$maxtemp, lag=6, argvar=list(df=2),arglag=list(fun = "ns",df=3), group=df_MI$MRN)
+mod_max <- gnm(event ~ mi_max + pm25+  as.factor(season) , eliminate=stratum2, data=df_MI, family=binomial)
+
+# min model
+mi_mim <- crossbasis(df_MI$mintemp, lag=6, argvar=list(df=2),arglag=list(fun = "ns",df=3), group=df_MI$MRN)
+mod_min <- gnm(event ~ mi_mim + pm25+  as.factor(season) , eliminate=stratum2, data=df_MI, family=binomial)
+
+# Diurnal model
+mi_dtr <- crossbasis(df_MI$diurnal, lag=6, argvar=list(df=2),arglag=list(fun = "ns",df=3), group=df_MI$MRN)
+mod_dtr <- gnm(event ~ mi_dtr + pm25+  as.factor(season) , eliminate=stratum2, data=df_MI, family=binomial)
+```
+
+# overall RR
+```{r}
+#  overall RR center around the median compare to percentile
+# 10th percentile
+cppm <- crosspred(mi, mod, at=-9:30, cen=13,cumul=TRUE)
+#Cumulative effect of the 10th percentile
+# cen=x; ["x+1",]
+with(cppm,cbind(allRRfit,allRRlow,allRRhigh)["14",])
+
+# 90th percentile
+cppm <- crosspred(mi, mod, at=-9:30, cen=18,cumul=TRUE)
+#Cumulative effect
+with(cppm,cbind(allRRfit,allRRlow,allRRhigh)["19",])
+
+# Maximal overall RR
+# 10th percentile
+cppm_max <- crosspred(mi_max, mod_max, at=-6:35, cen=3,cumul=TRUE)
+#Cumulative effect
+with(cppm_max,cbind(allRRfit,allRRlow,allRRhigh)["4",])
+
+# 90th percentile
+cppm_max <- crosspred(mi_max, mod_max, at=-6:35, cen=30,cumul=TRUE)
+# Cumulative effect - threshold
+# cbind(allRRfit,allRRlow,allRRhigh)["threshold",]
+with(cppm_max,cbind(allRRfit,allRRlow,allRRhigh)["31",])
+
+
+# minumal
+cppm_max <- crosspred(mi_mim, mod_min, at=-13:25, cen=-3,cumul=TRUE)
+#Cumulative effect
+with(cppm_max,cbind(allRRfit,allRRlow,allRRhigh)["-2",])
+
+# 90th percentile
+cppm_max <- crosspred(mi_mim, mod_min, at=-13:25, cen=21,cumul=TRUE)
+# Cumulative effect - threshold
+with(cppm_max,cbind(allRRfit,allRRlow,allRRhigh)["22",])
+```
+
+# Duirnal overall RR
+```{r}
+m10 <- crosspred(mi_dtr, mod_dtr, at=1:17, cen=4,cumul=TRUE)
+with(m10,cbind(allRRfit,allRRlow,allRRhigh)["5",])
+# allRRfit 1.0435363
+
+m90 <- crosspred(mi_dtr, mod_dtr, at=1:17, cen=12,cumul=TRUE)
+with(m90,cbind(allRRfit,allRRlow,allRRhigh)["13",])
+# allRRfit 1.1171710
+```
+
+# figure #4 MI Cumulative exposure-response
+```{r}
+# center oround the median 
+# Median mean temp 13.32
+# Median max temp 17.7
+# Median min temp 9.15
+# Median duirnal temp 7.99
+tiff("H:/for server/MI_comulative.tif",res=300,width=7,height=10,unit="in")
+
+par(mfrow=c(4,1))
+cppm1 <- crosspred(mi, mod, at=-9:30, cen=13,cumul=FALSE)
+plot(cppm1, var=14, "overall", xlab="Mean temperature", ylab="OR (95% CI)", col=4,
+     main="(A)",cex.lab=1.5,cex.axis=1.2)
+
+
+cppm_max <- crosspred(mi_max, mod_max, at=-6:35, cen=17,cumul=FALSE)
+plot(cppm_max, var=18, "overall", xlab="Maximum temperature", ylab="OR (95% CI)", col=4,
+     main="(B)",cex.lab=1.5,cex.axis=1.2)
+
+
+cppm_min <- crosspred(mi_mim, mod_min, at=-13:25, cen=9,cumul=FALSE)
+plot(cppm_max, var=10, "overall", xlab="Minimum temperature", ylab="OR (95% CI)", col=4,
+     main="(C)",cex.lab=1.5,cex.axis=1.2)
+
+
+cppm_mi <- crosspred(mi_dtr, mod_dtr, at=1:17, cen=8,cumul=FALSE)
+plot(cppm_mi, var=9, "overall", xlab="Diurnal temperature", ylab="OR (95% CI)", col=4,
+     main="(D)",cex.lab=1.5,cex.axis=1.2)
+
+
+dev.off()
+```
+
+# figure MI lags
+# additional title lag plots
+```{r}
+tiff("H:/for server/temp plots/MI_lags_with_title.tif",res=300,width=15,height=15,unit="in")
+
+par(mfrow=c(4,2))
+
+# Median mean temp 13.32
+# Median max temp 17.7
+# Median min temp 9.15
+# Median duirnal temp 7.99
+
+# for 10th percentile of mean
+cppm5 <- crosspred(mi, mod, at=-9:30, cen=13,cumul=FALSE)
+plot(cppm5, var=1, ci="b", type="p", ylab="OR (95% CI)", col=4, pch=19, cex=1.7,
+     xlab="Lag", main="A. Comparing 0.3 °C (10th %) mean temperature to 13 °C (50th %)", lab=c(3,5,7),cex.lab=1.5,cex.axis=1.2)
+
+# 90th percentile mean
+cppm95 <- crosspred(mi, mod, at=-9:30, cen=13,cumul=TRUE)
+plot(cppm95, var=25, ci="b", type="p", ylab="OR (95% CI)", col=4, pch=19, cex=1.7,
+     xlab="Lag", main="B. Comparing 25.3 °C (90th %) mean temperature to 13 °C (50th %)", lab=c(3,5,7),cex.lab=1.5,cex.axis=1.2)
+
+# for 10th percentile of max
+cppm5_max <- crosspred(mi_max, mod_max, at=-6:35, cen=17,cumul=FALSE)
+plot(cppm5_max, var=4, ci="b", type="p", ylab="OR (95% CI)", col=4, pch=19, cex=1.7,
+     xlab="Lag", main="C. Comparing 3.4 °C (10th %) maximum temperature to 17 °C (50th %).", lab=c(3,5,7),cex.lab=1.5,cex.axis=1.2)
+
+# 90th percentile max
+cppm95_max <- crosspred(mi_max, mod_max, at=-6:35, cen=17,cumul=TRUE)
+plot(cppm95_max, var=30, ci="b", type="p", ylab="OR (95% CI)", col=4, pch=19, cex=1.7,
+     xlab="Lag", main="D. Comparing 30.3 °C (90th %) maximum temperature to 17 °C (50th %).", lab=c(3,5,7),cex.lab=1.5,cex.axis=1.2)
+
+# for 10th percentile of max
+cppm5_min <- crosspred(mi_mim, mod_min, at=-13:25, cen=9,cumul=FALSE)
+plot(cppm5_max, var=-3, ci="b", type="p", ylab="OR (95% CI)", col=4, pch=19, cex=1.7,
+     xlab="Lag", main="E. Comparing -3.1 °C (10th %) minimum temperature to 17 °C (50th %).", lab=c(3,5,7),cex.lab=1.5,cex.axis=1.2)
+
+# 90th percentile max
+cppm95_min <- crosspred(mi_mim, mod_min, at=-13:25, cen=9,cumul=TRUE)
+plot(cppm95_max, var=21, ci="b", type="p", ylab="OR (95% CI)", col=4, pch=19, cex=1.7,
+     xlab="Lag", main="F. Comparing 21.5 °C (90th %) minimum temperature to 17 °C (50th %).", lab=c(3,5,7),cex.lab=1.5,cex.axis=1.2)
+
+# for 10th percentile of diurnal
+cppm10 <- crosspred(mi_dtr, mod_dtr, at=1:17, cen=8,cumul=FALSE)
+plot(cppm10, var=4, ci="b", type="p", ylab="OR (95% CI)", col=4, pch=19, cex=1.7,
+     xlab="Lag", main="G. Comparing 3.8 °C (10th %) DTR to 8 °C (50th %)", lab=c(3,5,7),cex.lab=1.5,cex.axis=1.2)
+
+# 90th percentile diurnal
+cppm90 <- crosspred(mi_dtr, mod_dtr, at=1:17, cen=8,cumul=TRUE)
+plot(cppm90, var=12, ci="b", type="p", ylab="OR", col=4, pch=19, cex=1.7,
+     xlab="Lag", main="H. Comparing 12 °C (90th %) DTR to 8 °C (50th %)", lab=c(3,5,7),cex.lab=1.5,cex.axis=1.2)
+
+dev.off()
+```
+
+# calculate lag specific RR for MI and mean temperature
+```{r}
+detach("package:plyr", unload=TRUE)
+df_MI2 <- df_MI %>%
+  group_by(MRN) %>%
+  reduce(columns_to_process, .init = ., .f = generate_vars)
+
+exposures = c("meantemp","meantemp_lag1",'meantemp_lag2')
+
+data=as.data.table(data)
+table = data.frame()
+
+for (comp in exposures){
+  
+  form = paste0("event ~ ", comp, "+ pm25 +  as.factor(season)"
+  )
+  
+  mod = gnm(as.formula(form), eliminate=stratum2, data = df_MI2, family = binomial() )
+  smod=as.data.frame(summary(mod)$coefficients)
+  table = rbind(table, smod)
+}
+
+  models=as.data.table(table,keep.rownames = TRUE)
+
+
+# Calculate HR and 95% CI per IQR increase
+  models$HR <- exp(models$Estimate) 
+  models$LCI <- exp((models$Estimate - 1.96 * models$`Std. Error`))  
+  models$UCI <- exp((models$Estimate + 1.96 * models$`Std. Error`))
+
+  models$HR <- format(round(models$HR, 3), nsmall = 3)
+  models$LCI <- format(round(models$LCI, 3), nsmall = 3)
+  models$UCI <- format(round(models$UCI, 3), nsmall = 3)
+  models$`Pr(>|z|)` <- format(round(models$`Pr(>|z|)`, 2), nsmall = 2)
+  models=subset(models,rn=='meantemp' | rn=='meantemp_lag1'| rn=='meantemp_lag2')
+  models <- subset(models, select = c("rn", "HR", "LCI", "UCI", "Pr(>|z|)"))
+# Print the resulting table
+  print(models)
+```
+
+# ozone sensitivity analysis
+# read ozone files
+```{r}
+library(readxl)
+library(dplyr)
+
+# Set the directory containing the .xls files
+folder_path <- "C:/Users/furmah01/OneDrive - The Mount Sinai Hospital/Helena/MSDW PC patients 2011-2023/Temperature and CVD/Daily Ozone EPA"  # <-- Replace this with your folder path
+
+# Get a list of all .xls files in the folder
+xls_files <- list.files(path = folder_path, pattern = "\\.csv$", full.names = TRUE)
+
+# Read and combine all the .xls files into one dataframe
+combined_df <- lapply(xls_files, read.csv) %>%
+  bind_rows()
+```
+
+# convert to spatialdata frame
+```{r}
+library(sf)
+
+# Convert to sf object (assuming 'lat' and 'lon' columns)
+ozone <- st_as_sf(combined_df, coords = c("Site.Longitude", "Site.Latitude"), crs = 4326)
+ozone$year = format(as.Date(ozone$Date, format="%m/%d/%Y"),"%Y")
+```
+
+# read stroke files
+```{r}
+data = readRDS('C:\\Users\\furmah01\\OneDrive - The Mount Sinai Hospital\\Helena\\MSDW PC patients 2011-2023\\generated files\\Temperature and cvd\\Helena_data_Temp_stroke.rds')
+
+mi <- st_as_sf(data, coords = c("coords.x1", "coords.x2"), crs = 4326)
+```
+
+take only one row
+```{r}
+ozone2= subset(ozone, select = c('Site.ID','geometry'))
+ozone2= ozone2[!duplicated(ozone2),]
+
+mi2= subset(mi, select = c('MRN','geometry'))
+mi2= mi2[!duplicated(mi2),]
+```
+
+```{r}
+# Find the index of the nearest point in spatial_df for each point in xx
+nearest_indices <- st_nearest_feature(mi2, ozone2)
+
+# Get the closest points from spatial_df
+closest_points <- ozone2[nearest_indices, ]
+
+# Optionally, bind the result to the original xx
+xx_with_closest <- cbind(mi2, closest_points)
+```
+
+```{r}
+mi3 = as.data.frame(xx_with_closest)
+mi3$geometry=NULL
+mi3$geometry.1=NULL
+
+mi4 = left_join(distinct(mi), mi3, by='MRN')
+```
+
+Supplementary Table 4.  
+# ANALYSIS FOR STROKE
+```{r}
+# linear for CI mean temp
+cbpm_st <- crossbasis(df_stroke$meantemp, lag=6, argvar = list(fun="lin"),arglag=list(fun = "ns",df=3), group=df_stroke$MRN)
+mod_st <- gnm(event ~ cbpm_st + pm25 +  as.factor(season)+Daily.Max.8.hour.Ozone.Concentration, eliminate=stratum2, data=df_stroke, family=binomial)
+
+# model maximal
+cbpm_st_max <- crossbasis(df_stroke$maxtemp, lag=6, argvar = list(fun="lin"),arglag=list(fun = "ns",df=3), group=df_stroke$MRN)
+mod_st_max <- gnm(event ~ cbpm_st_max + pm25+  as.factor(season)+Daily.Max.8.hour.Ozone.Concentration, eliminate=stratum2, data=df_stroke, family=binomial)
+
+# model diurnal
+cbpm_stroke <- crossbasis(df_stroke$diurnal, lag=6, argvar = list(fun="lin"),arglag=list(fun = "ns",df=3), group=df_stroke$MRN)
+mod_stroke <- gnm(event ~ cbpm_stroke + pm25+  as.factor(season) +Daily.Max.8.hour.Ozone.Concentration, eliminate=stratum2, data=df_stroke, family=binomial)
+
+# model min
+min_stroke <- crossbasis(df_stroke$mintemp, lag=6, argvar = list(fun="lin"),arglag=list(fun = "ns",df=3), group=df_stroke$MRN)
+mod_min <- gnm(event ~ min_stroke + pm25+  as.factor(season) +Daily.Max.8.hour.Ozone.Concentration, eliminate=stratum2, data=df_stroke, family=binomial)
+```
+
+# overall RR 
+```{r}
+# because it is linear - calculate overall RR in the lowest point
+cppm_st <- crosspred(cbpm_st, mod_st, at=-9:30, cen=0,cumul=TRUE)
+#Cumulative effect
+with(cppm_st,cbind(allRRfit,allRRlow,allRRhigh)["1",])
+
+# maximal
+cppm_st_max <- crosspred(cbpm_st_max, mod_st_max, at=-6:35, cen=0,cumul=TRUE)
+with(cppm_st_max,cbind(allRRfit,allRRlow,allRRhigh)["1",])
+
+# min
+min <- crosspred(min_stroke, mod_min, at=-13:25, cen=0,cumul=TRUE)
+with(min,cbind(allRRfit,allRRlow,allRRhigh)["1",])
+
+# Diurnal
+dtr <- crosspred(cbpm_stroke, mod_stroke, at=1:17, cen=0,cumul=TRUE)
+with(dtr,cbind(allRRfit,allRRlow,allRRhigh)["1",])
+```
+
+# MI
+# ANALYSIS FOR MI and mean temperature +Daily.Max.8.hour.Ozone.Concentration
+```{r}
+# non linear for MI mean temp
+mi <- crossbasis(df_MI$meantemp, lag=6, argvar=list(df=2),arglag=list(fun = "ns",df=3), group=df_MI$MRN)
+mod <- gnm(event ~ mi + pm25+ as.factor(season)+Daily.Max.8.hour.Ozone.Concentration, eliminate=stratum2, data=df_MI, family=binomial)
+
+# maximal model
+mi_max <- crossbasis(df_MI$maxtemp, lag=6, argvar=list(df=2),arglag=list(fun = "ns",df=3), group=df_MI$MRN)
+mod_max <- gnm(event ~ mi_max + pm25+  as.factor(season) +Daily.Max.8.hour.Ozone.Concentration, eliminate=stratum2, data=df_MI, family=binomial)
+
+# min model
+mi_mim <- crossbasis(df_MI$mintemp, lag=6, argvar=list(df=2),arglag=list(fun = "ns",df=3), group=df_MI$MRN)
+mod_min <- gnm(event ~ mi_mim + pm25+  as.factor(season) +Daily.Max.8.hour.Ozone.Concentration, eliminate=stratum2, data=df_MI, family=binomial)
+
+# Diurnal model
+mi_dtr <- crossbasis(df_MI$diurnal, lag=6, argvar=list(df=2),arglag=list(fun = "ns",df=3), group=df_MI$MRN)
+mod_dtr <- gnm(event ~ mi_dtr + pm25+  as.factor(season) +Daily.Max.8.hour.Ozone.Concentration, eliminate=stratum2, data=df_MI, family=binomial)
+```
+
+# overall RR
+# Median mean temp 13.32
+# Median max temp 17.7
+# Median duirnal temp 7.99
+# Median min temp 9.15
+
+cen = mean
+[percentile]
+```{r}
+#  overall RR center around the median compare to percentile
+# 10th percentile
+cppm <- crosspred(mi, mod, at=-9:30, cen=14,cumul=TRUE)
+# cen=x; ["x+1",]
+with(cppm,cbind(allRRfit,allRRlow,allRRhigh)["13",])
+
+# 90th percentile
+cppm <- crosspred(mi, mod, at=-9:30, cen=14,cumul=TRUE)
+#Cumulative effect
+with(cppm,cbind(allRRfit,allRRlow,allRRhigh)["18",])
+
+# Maximal overall RR
+# 10th percentile
+cppm_max <- crosspred(mi_max, mod_max, at=-6:35, cen=17,cumul=TRUE)
+#Cumulative effect
+with(cppm_max,cbind(allRRfit,allRRlow,allRRhigh)["3",])
+
+# 90th percentile
+cppm_max <- crosspred(mi_max, mod_max, at=-6:35, cen=17,cumul=TRUE)
+# Cumulative effect - threshold
+# cbind(allRRfit,allRRlow,allRRhigh)["threshold",]
+with(cppm_max,cbind(allRRfit,allRRlow,allRRhigh)["30",])
+
+
+# minumal
+cppm_max <- crosspred(mi_mim, mod_min, at=-13:25, cen=9,cumul=TRUE)
+#Cumulative effect
+with(cppm_max,cbind(allRRfit,allRRlow,allRRhigh)["-3",])
+
+# 90th percentile
+cppm_max <- crosspred(mi_mim, mod_min, at=-13:25, cen=9,cumul=TRUE)
+# Cumulative effect - threshold
+with(cppm_max,cbind(allRRfit,allRRlow,allRRhigh)["21",])
+
+#Duirnal
+m10 <- crosspred(mi_dtr, mod_dtr, at=1:17, cen=8,cumul=TRUE)
+with(m10,cbind(allRRfit,allRRlow,allRRhigh)["4",])
+
+m90 <- crosspred(mi_dtr, mod_dtr, at=1:17, cen=8,cumul=TRUE)
+with(m90,cbind(allRRfit,allRRlow,allRRhigh)["12",])
+```
+
+
