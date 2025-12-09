@@ -1,0 +1,1362 @@
+---
+title: "Untitled"
+author: "Helena Furman"
+date: "2025-03-27"
+output: html_document
+---
+```{r}
+x_values <- c(8, 30, 50, 70, 100, 120, 150,170, 200, 220, 240, 263)
+```
+
+pm
+```{r}
+mod= bam(log(glucose)~ pm*Total_hours911_930+mean_temp + as.factor(work2)+ age+s(year,bs='ps') +  as.factor(Race4) + as.factor(edu4)+ pct_black + MEDHH + pct_poverty+pct_NoHS+s(RunningID,bs='re') + as.factor(Gender),data=gluc_wtc)
+
+results2=summary(mod)$p.table
+results2<-as.data.table(results2,keep.rownames = TRUE)[]
+results2$`p-value`<-format(round(results2$`Pr(>|t|)`,3),nsmall=3)
+exposure = subset(results2,rn=="pm")
+results2<-subset(results2,rn=="pm:Total_hours911_930")
+
+#Get vcov
+vcov2<-vcov(mod)
+
+s1=sqrt(vcov2[2,2] + (vcov2[18,18]*(8^2))+ (2*8*vcov2[2,18]))
+s2<- sqrt(vcov2[2,2] + (vcov2[18,18]*(30^2))+ (2*30*vcov2[2,18]))
+s3<- sqrt(vcov2[2,2] + (vcov2[18,18]*(50^2))+ (2*50*vcov2[2,18]))
+s4<- sqrt(vcov2[2,2] + (vcov2[18,18]*(70^2))+ (2*70*vcov2[2,18]))
+s5<- sqrt(vcov2[2,2] + (vcov2[18,18]*(100^2))+ (2*100*vcov2[2,18]))
+s6<- sqrt(vcov2[2,2] + (vcov2[18,18]*(120^2))+ (2*120*vcov2[2,18]))
+s7<- sqrt(vcov2[2,2] + (vcov2[18,18]*(170^2))+ (2*170*vcov2[2,18]))
+s8<- sqrt(vcov2[2,2] + (vcov2[18,18]*(200^2))+ (2*200*vcov2[2,18]))
+s9<- sqrt(vcov2[2,2] + (vcov2[18,18]*(220^2))+ (2*220*vcov2[2,18]))
+s10<- sqrt(vcov2[2,2] + (vcov2[18,18]*(240^2))+ (2*240*vcov2[2,18]))
+s11<- sqrt(vcov2[2,2] + (vcov2[18,18]*(263^2))+ (2*263*vcov2[2,18]))
+s12<- sqrt(vcov2[2,2] + (vcov2[18,18]*(150^2))+ (2*150*vcov2[2,18]))
+
+#Combine
+vcov<-cbind(s1,s2,s3,s4,s5,s6,s12,s7,s8,s9,s10,s11)
+vcov<-as.data.table(vcov)
+
+#Calculate b for the 10th and 90th % of the modifier
+results2$beta1= exposure$Estimate + 8*results2$Estimate
+results2$beta2= exposure$Estimate + 30*results2$Estimate
+results2$beta3= exposure$Estimate + 50*results2$Estimate
+results2$beta4= exposure$Estimate + 70*results2$Estimate
+results2$beta5= exposure$Estimate + 100*results2$Estimate
+results2$beta6= exposure$Estimate + 120*results2$Estimate
+results2$beta7= exposure$Estimate + 170*results2$Estimate
+results2$beta8= exposure$Estimate + 200*results2$Estimate
+results2$beta9= exposure$Estimate + 220*results2$Estimate
+results2$beta10= exposure$Estimate + 240*results2$Estimate
+results2$beta11= exposure$Estimate + 263*results2$Estimate
+results2$beta12= exposure$Estimate + 150*results2$Estimate
+
+results2$OR1<-(exp(results2$beta1*iqrs2)-1)*100
+results2$LCI1<-(exp((results2$beta1-1.96*vcov$s1)*iqrs2)-1)*100
+results2$HCI1<-(exp((results2$beta1+1.96*vcov$s1)*iqrs2)-1)*100
+
+results2$OR2<-(exp(results2$beta2*iqrs2)-1)*100
+results2$LCI2<-(exp((results2$beta2-1.96*vcov$s2)*iqrs2)-1)*100
+results2$HCI2<-(exp((results2$beta2+1.96*vcov$s2)*iqrs2)-1)*100
+
+results2$OR3<-(exp(results2$beta3*iqrs2)-1)*100
+results2$LCI3<-(exp((results2$beta3-1.96*vcov$s3)*iqrs2)-1)*100
+results2$HCI3<-(exp((results2$beta3+1.96*vcov$s3)*iqrs2)-1)*100
+
+results2$OR4<-(exp(results2$beta4*iqrs2)-1)*100
+results2$LCI4<-(exp((results2$beta4-1.96*vcov$s4)*iqrs2)-1)*100
+results2$HCI4<-(exp((results2$beta4+1.96*vcov$s4)*iqrs2)-1)*100
+
+results2$OR5<-(exp(results2$beta5*iqrs2)-1)*100
+results2$LCI5<-(exp((results2$beta5-1.96*vcov$s5)*iqrs2)-1)*100
+results2$HCI5<-(exp((results2$beta5+1.96*vcov$s5)*iqrs2)-1)*100
+
+results2$OR6<-(exp(results2$beta6*iqrs2)-1)*100
+results2$LCI6<-(exp((results2$beta6-1.96*vcov$s6)*iqrs2)-1)*100
+results2$HCI6<-(exp((results2$beta6+1.96*vcov$s6)*iqrs2)-1)*100
+
+results2$OR7<-(exp(results2$beta7*iqrs2)-1)*100
+results2$LCI7<-(exp((results2$beta7-1.96*vcov$s7)*iqrs2)-1)*100
+results2$HCI7<-(exp((results2$beta7+1.96*vcov$s7)*iqrs2)-1)*100
+
+results2$OR8<-(exp(results2$beta8*iqrs2)-1)*100
+results2$LCI8<-(exp((results2$beta8-1.96*vcov$s8)*iqrs2)-1)*100
+results2$HCI8<-(exp((results2$beta8+1.96*vcov$s8)*iqrs2)-1)*100
+
+results2$OR9<-(exp(results2$beta9*iqrs2)-1)*100
+results2$LCI9<-(exp((results2$beta9-1.96*vcov$s9)*iqrs2)-1)*100
+results2$HCI9<-(exp((results2$beta9+1.96*vcov$s9)*iqrs2)-1)*100
+
+results2$OR10<-(exp(results2$beta10*iqrs2)-1)*100
+results2$LCI10<-(exp((results2$beta10-1.96*vcov$s10)*iqrs2)-1)*100
+results2$HCI10<-(exp((results2$beta10+1.96*vcov$s10)*iqrs2)-1)*100
+
+results2$OR11<-(exp(results2$beta11*iqrs2)-1)*100
+results2$LCI11<-(exp((results2$beta11-1.96*vcov$s11)*iqrs2)-1)*100
+results2$HCI11<-(exp((results2$beta11+1.96*vcov$s11)*iqrs2)-1)*100
+
+results2$OR12<-(exp(results2$beta12*iqrs2)-1)*100
+results2$LCI12<-(exp((results2$beta12-1.96*vcov$s12)*iqrs2)-1)*100
+results2$HCI12<-(exp((results2$beta12+1.96*vcov$s12)*iqrs2)-1)*100
+
+# Create the plot data with the custom x-axis values
+plot_data <- data.table(
+  x_value = x_values,  # Set the x-axis values (before *Estimate)
+  change = c(results2$OR1, results2$OR2, results2$OR3, results2$OR4, results2$OR5, results2$OR6, results2$OR12,results2$OR7, results2$OR8, results2$OR9, results2$OR10, results2$OR11),
+  LCI = c(results2$LCI1, results2$LCI2, results2$LCI3, results2$LCI4, results2$LCI5, results2$LCI6, results2$LCI12,results2$LCI7, results2$LCI8, results2$LCI9, results2$LCI10, results2$LCI11),
+  HCI = c(results2$HCI1, results2$HCI2, results2$HCI3, results2$HCI4, results2$HCI5, results2$HCI6, results2$HCI12,results2$HCI7, results2$HCI8, results2$HCI9, results2$HCI10, results2$HCI11)
+)
+
+# Create the plot with custom x-axis values, updated title, and dashed line at y = 1
+pm=ggplot(plot_data, aes(x = x_value, y = change)) +
+  geom_point(color = "blue", size = 3) +  # Plot the point for OR
+  geom_errorbar(aes(ymin = LCI, ymax = HCI), width = 0.2) +  # Add error bars for CI
+  geom_hline(yintercept = 0, linetype = "dashed", color = "red") +  # Add dashed line at y = 1
+  labs(x = "Total hours", y = "% Change & 95% CI", title = "PM2.5") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),plot.title = element_text(size=10))  # Rotate x-axis labels for better readability
+```
+
+x1
+```{r}
+mod1= bam(log(glucose)~ X1_app*Total_hours911_930+X2_app +X3_app+X4_app+X5_app+ mean_temp+ as.factor(work2) + age+s(year,bs='ps') +  as.factor(Race4) + as.factor(edu4)+ pct_black + MEDHH + pct_poverty+pct_NoHS+s(RunningID,bs='re')+as.factor(Gender),data=gluc_wtc)
+
+results2=summary(mod1)$p.table
+results2<-as.data.table(results2,keep.rownames = TRUE)[]
+results2$`p-value`<-format(round(results2$`Pr(>|t|)`,3),nsmall=3)
+exposure = subset(results2,rn=="X1_app")
+results2<-subset(results2,rn=="X1_app:Total_hours911_930")
+
+#Get vcov
+vcov2<-vcov(mod1)
+
+s1=sqrt(vcov2[2,2] + (vcov2[22,22]*(8^2))+ (2*8*vcov2[2,22]))
+s2<- sqrt(vcov2[2,2] + (vcov2[22,22]*(30^2))+ (2*30*vcov2[2,22]))
+s3<- sqrt(vcov2[2,2] + (vcov2[22,22]*(50^2))+ (2*50*vcov2[2,22]))
+s4<- sqrt(vcov2[2,2] + (vcov2[22,22]*(70^2))+ (2*70*vcov2[2,22]))
+s5<- sqrt(vcov2[2,2] + (vcov2[22,22]*(100^2))+ (2*100*vcov2[2,22]))
+s6<- sqrt(vcov2[2,2] + (vcov2[22,22]*(120^2))+ (2*120*vcov2[2,22]))
+s7<- sqrt(vcov2[2,2] + (vcov2[22,22]*(170^2))+ (2*170*vcov2[2,22]))
+s8<- sqrt(vcov2[2,2] + (vcov2[22,22]*(200^2))+ (2*200*vcov2[2,22]))
+s9<- sqrt(vcov2[2,2] + (vcov2[22,22]*(220^2))+ (2*220*vcov2[2,22]))
+s10<- sqrt(vcov2[2,2] + (vcov2[22,22]*(240^2))+ (2*240*vcov2[2,22]))
+s11<- sqrt(vcov2[2,2] + (vcov2[22,22]*(263^2))+ (2*263*vcov2[2,22]))
+s12<- sqrt(vcov2[2,2] + (vcov2[22,22]*(150^2))+ (2*150*vcov2[2,22]))
+#Combine
+vcov<-cbind(s1,s2,s3,s4,s5,s6,s12,s7,s8,s9,s10,s11)
+
+vcov<-as.data.table(vcov)
+
+#Calculate b for the 10th and 90th % of the modifier
+results2$beta1= exposure$Estimate + 8*results2$Estimate
+results2$beta2= exposure$Estimate + 30*results2$Estimate
+results2$beta3= exposure$Estimate + 50*results2$Estimate
+results2$beta4= exposure$Estimate + 70*results2$Estimate
+results2$beta5= exposure$Estimate + 100*results2$Estimate
+results2$beta6= exposure$Estimate + 120*results2$Estimate
+results2$beta7= exposure$Estimate + 170*results2$Estimate
+results2$beta8= exposure$Estimate + 200*results2$Estimate
+results2$beta9= exposure$Estimate + 220*results2$Estimate
+results2$beta10= exposure$Estimate + 240*results2$Estimate
+results2$beta11= exposure$Estimate + 263*results2$Estimate
+results2$beta12= exposure$Estimate + 150*results2$Estimate
+
+results2$OR1<-(exp(results2$beta1*iqrs[1])-1)*100
+results2$LCI1<-(exp((results2$beta1-1.96*vcov$s1)*iqrs[1])-1)*100
+results2$HCI1<-(exp((results2$beta1+1.96*vcov$s1)*iqrs[1])-1)*100
+
+results2$OR2<-(exp(results2$beta2*iqrs[1])-1)*100
+results2$LCI2<-(exp((results2$beta2-1.96*vcov$s2)*iqrs[1])-1)*100
+results2$HCI2<-(exp((results2$beta2+1.96*vcov$s2)*iqrs[1])-1)*100
+
+results2$OR3<-(exp(results2$beta3*iqrs[1])-1)*100
+results2$LCI3<-(exp((results2$beta3-1.96*vcov$s3)*iqrs[1])-1)*100
+results2$HCI3<-(exp((results2$beta3+1.96*vcov$s3)*iqrs[1])-1)*100
+
+results2$OR4<-(exp(results2$beta4*iqrs[1])-1)*100
+results2$LCI4<-(exp((results2$beta4-1.96*vcov$s4)*iqrs[1])-1)*100
+results2$HCI4<-(exp((results2$beta4+1.96*vcov$s4)*iqrs[1])-1)*100
+
+results2$OR5<-(exp(results2$beta5*iqrs[1])-1)*100
+results2$LCI5<-(exp((results2$beta5-1.96*vcov$s5)*iqrs[1])-1)*100
+results2$HCI5<-(exp((results2$beta5+1.96*vcov$s5)*iqrs[1])-1)*100
+
+results2$OR6<-(exp(results2$beta6*iqrs[1])-1)*100
+results2$LCI6<-(exp((results2$beta6-1.96*vcov$s6)*iqrs[1])-1)*100
+results2$HCI6<-(exp((results2$beta6+1.96*vcov$s6)*iqrs[1])-1)*100
+
+results2$OR7<-(exp(results2$beta7*iqrs[1])-1)*100
+results2$LCI7<-(exp((results2$beta7-1.96*vcov$s7)*iqrs[1])-1)*100
+results2$HCI7<-(exp((results2$beta7+1.96*vcov$s7)*iqrs[1])-1)*100
+
+results2$OR8<-(exp(results2$beta8*iqrs[1])-1)*100
+results2$LCI8<-(exp((results2$beta8-1.96*vcov$s8)*iqrs[1])-1)*100
+results2$HCI8<-(exp((results2$beta8+1.96*vcov$s8)*iqrs[1])-1)*100
+
+results2$OR9<-(exp(results2$beta9*iqrs[1])-1)*100
+results2$LCI9<-(exp((results2$beta9-1.96*vcov$s9)*iqrs[1])-1)*100
+results2$HCI9<-(exp((results2$beta9+1.96*vcov$s9)*iqrs[1])-1)*100
+
+results2$OR10<-(exp(results2$beta10*iqrs[1])-1)*100
+results2$LCI10<-(exp((results2$beta10-1.96*vcov$s10)*iqrs[1])-1)*100
+results2$HCI10<-(exp((results2$beta10+1.96*vcov$s10)*iqrs[1])-1)*100
+
+results2$OR11<-(exp(results2$beta11*iqrs[1])-1)*100
+results2$LCI11<-(exp((results2$beta11-1.96*vcov$s11)*iqrs[1])-1)*100
+results2$HCI11<-(exp((results2$beta11+1.96*vcov$s11)*iqrs[1])-1)*100
+
+results2$OR12<-(exp(results2$beta12*iqrs[1])-1)*100
+results2$LCI12<-(exp((results2$beta12-1.96*vcov$s12)*iqrs[1])-1)*100
+results2$HCI12<-(exp((results2$beta12+1.96*vcov$s12)*iqrs[1])-1)*100
+
+plot_data <- data.table(
+  x_value = x_values,  # Set the x-axis values (before *Estimate)
+  change = c(results2$OR1, results2$OR2, results2$OR3, results2$OR4, results2$OR5, results2$OR6, results2$OR12,results2$OR7, results2$OR8, results2$OR9, results2$OR10, results2$OR11),
+  LCI = c(results2$LCI1, results2$LCI2, results2$LCI3, results2$LCI4, results2$LCI5, results2$LCI6, results2$LCI12,results2$LCI7, results2$LCI8, results2$LCI9, results2$LCI10, results2$LCI11),
+  HCI = c(results2$HCI1, results2$HCI2, results2$HCI3, results2$HCI4, results2$HCI5, results2$HCI6, results2$HCI12,results2$HCI7, results2$HCI8, results2$HCI9, results2$HCI10, results2$HCI11)
+)
+
+# Create the plot with custom x-axis values, updated title, and dashed line at y = 1
+x1=ggplot(plot_data, aes(x = x_value, y = change)) +
+  geom_point(color = "blue", size = 3) +  # Plot the point for OR
+  geom_errorbar(aes(ymin = LCI, ymax = HCI), width = 0.2) +  # Add error bars for CI
+  geom_hline(yintercept = 0, linetype = "dashed", color = "red") +  # Add dashed line at y = 1
+  labs(x = "Total hours", y = "% Change & 95% CI", title = "Biomass Burning Sources") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),plot.title = element_text(size=10))  # Rotate x-axis labels for better readability
+```
+
+x2
+```{r}
+mod2= bam(log(glucose)~ X2_app*Total_hours911_930+X1_app +X3_app+X4_app+X5_app+ mean_temp+ as.factor(work2) + age+s(year,bs='ps') +  as.factor(Race4) + as.factor(edu4)+ pct_black + MEDHH + pct_poverty+pct_NoHS+s(RunningID,bs='re')+as.factor(Gender),data=gluc_wtc)
+
+results2=summary(mod2)$p.table
+results2<-as.data.table(results2,keep.rownames = TRUE)[]
+results2$`p-value`<-format(round(results2$`Pr(>|t|)`,3),nsmall=3)
+exposure = subset(results2,rn=="X2_app")
+results2<-subset(results2,rn=="X2_app:Total_hours911_930")
+
+#Get vcov
+vcov2<-vcov(mod2)
+
+s1=sqrt(vcov2[2,2] + (vcov2[22,22]*(8^2))+ (2*8*vcov2[2,22]))
+s2<- sqrt(vcov2[2,2] + (vcov2[22,22]*(30^2))+ (2*30*vcov2[2,22]))
+s3<- sqrt(vcov2[2,2] + (vcov2[22,22]*(50^2))+ (2*50*vcov2[2,22]))
+s4<- sqrt(vcov2[2,2] + (vcov2[22,22]*(70^2))+ (2*70*vcov2[2,22]))
+s5<- sqrt(vcov2[2,2] + (vcov2[22,22]*(100^2))+ (2*100*vcov2[2,22]))
+s6<- sqrt(vcov2[2,2] + (vcov2[22,22]*(120^2))+ (2*120*vcov2[2,22]))
+s7<- sqrt(vcov2[2,2] + (vcov2[22,22]*(170^2))+ (2*170*vcov2[2,22]))
+s8<- sqrt(vcov2[2,2] + (vcov2[22,22]*(200^2))+ (2*200*vcov2[2,22]))
+s9<- sqrt(vcov2[2,2] + (vcov2[22,22]*(220^2))+ (2*220*vcov2[2,22]))
+s10<- sqrt(vcov2[2,2] + (vcov2[22,22]*(240^2))+ (2*240*vcov2[2,22]))
+s11<- sqrt(vcov2[2,2] + (vcov2[22,22]*(263^2))+ (2*263*vcov2[2,22]))
+s12<- sqrt(vcov2[2,2] + (vcov2[22,22]*(150^2))+ (2*150*vcov2[2,22]))
+#Combine
+vcov<-cbind(s1,s2,s3,s4,s5,s6,s7,s8,s9,s10,s11,s12)
+
+vcov<-as.data.table(vcov)
+
+#Calculate b for the 10th and 90th % of the modifier
+results2$beta1= exposure$Estimate + 8*results2$Estimate
+results2$beta2= exposure$Estimate + 30*results2$Estimate
+results2$beta3= exposure$Estimate + 50*results2$Estimate
+results2$beta4= exposure$Estimate + 70*results2$Estimate
+results2$beta5= exposure$Estimate + 100*results2$Estimate
+results2$beta6= exposure$Estimate + 120*results2$Estimate
+results2$beta7= exposure$Estimate + 170*results2$Estimate
+results2$beta8= exposure$Estimate + 200*results2$Estimate
+results2$beta9= exposure$Estimate + 220*results2$Estimate
+results2$beta10= exposure$Estimate + 240*results2$Estimate
+results2$beta11= exposure$Estimate + 263*results2$Estimate
+results2$beta12= exposure$Estimate + 150*results2$Estimate
+
+results2$OR1<-(exp(results2$beta1*iqrs[2])-1)*100
+results2$LCI1<-(exp((results2$beta1-1.96*vcov$s1)*iqrs[2])-1)*100
+results2$HCI1<-(exp((results2$beta1+1.96*vcov$s1)*iqrs[2])-1)*100
+
+results2$OR2<-(exp(results2$beta2*iqrs[2])-1)*100
+results2$LCI2<-(exp((results2$beta2-1.96*vcov$s2)*iqrs[2])-1)*100
+results2$HCI2<-(exp((results2$beta2+1.96*vcov$s2)*iqrs[2])-1)*100
+
+results2$OR3<-(exp(results2$beta3*iqrs[2])-1)*100
+results2$LCI3<-(exp((results2$beta3-1.96*vcov$s3)*iqrs[2])-1)*100
+results2$HCI3<-(exp((results2$beta3+1.96*vcov$s3)*iqrs[2])-1)*100
+
+results2$OR4<-(exp(results2$beta4*iqrs[2])-1)*100
+results2$LCI4<-(exp((results2$beta4-1.96*vcov$s4)*iqrs[2])-1)*100
+results2$HCI4<-(exp((results2$beta4+1.96*vcov$s4)*iqrs[2])-1)*100
+
+results2$OR5<-(exp(results2$beta5*iqrs[2])-1)*100
+results2$LCI5<-(exp((results2$beta5-1.96*vcov$s5)*iqrs[2])-1)*100
+results2$HCI5<-(exp((results2$beta5+1.96*vcov$s5)*iqrs[2])-1)*100
+
+results2$OR6<-(exp(results2$beta6*iqrs[2])-1)*100
+results2$LCI6<-(exp((results2$beta6-1.96*vcov$s6)*iqrs[2])-1)*100
+results2$HCI6<-(exp((results2$beta6+1.96*vcov$s6)*iqrs[2])-1)*100
+
+results2$OR7<-(exp(results2$beta7*iqrs[2])-1)*100
+results2$LCI7<-(exp((results2$beta7-1.96*vcov$s7)*iqrs[2])-1)*100
+results2$HCI7<-(exp((results2$beta7+1.96*vcov$s7)*iqrs[2])-1)*100
+
+results2$OR8<-(exp(results2$beta8*iqrs[2])-1)*100
+results2$LCI8<-(exp((results2$beta8-1.96*vcov$s8)*iqrs[2])-1)*100
+results2$HCI8<-(exp((results2$beta8+1.96*vcov$s8)*iqrs[2])-1)*100
+
+results2$OR9<-(exp(results2$beta9*iqrs[2])-1)*100
+results2$LCI9<-(exp((results2$beta9-1.96*vcov$s9)*iqrs[2])-1)*100
+results2$HCI9<-(exp((results2$beta9+1.96*vcov$s9)*iqrs[2])-1)*100
+
+results2$OR10<-(exp(results2$beta10*iqrs[2])-1)*100
+results2$LCI10<-(exp((results2$beta10-1.96*vcov$s10)*iqrs[2])-1)*100
+results2$HCI10<-(exp((results2$beta10+1.96*vcov$s10)*iqrs[2])-1)*100
+
+results2$OR11<-(exp(results2$beta11*iqrs[2])-1)*100
+results2$LCI11<-(exp((results2$beta11-1.96*vcov$s11)*iqrs[2])-1)*100
+results2$HCI11<-(exp((results2$beta11+1.96*vcov$s11)*iqrs[2])-1)*100
+
+results2$OR12<-(exp(results2$beta12*iqrs[2])-1)*100
+results2$LCI12<-(exp((results2$beta12-1.96*vcov$s12)*iqrs[2])-1)*100
+results2$HCI12<-(exp((results2$beta12+1.96*vcov$s12)*iqrs[2])-1)*100
+
+plot_data <- data.table(
+  x_value = x_values,  # Set the x-axis values (before *Estimate)
+  change = c(results2$OR1, results2$OR2, results2$OR3, results2$OR4, results2$OR5, results2$OR6, results2$OR12,results2$OR7, results2$OR8, results2$OR9, results2$OR10, results2$OR11),
+  LCI = c(results2$LCI1, results2$LCI2, results2$LCI3, results2$LCI4, results2$LCI5, results2$LCI6, results2$LCI12,results2$LCI7, results2$LCI8, results2$LCI9, results2$LCI10, results2$LCI11),
+  HCI = c(results2$HCI1, results2$HCI2, results2$HCI3, results2$HCI4, results2$HCI5, results2$HCI6, results2$HCI12,results2$HCI7, results2$HCI8, results2$HCI9, results2$HCI10, results2$HCI11)
+)
+
+# Create the plot with custom x-axis values, updated title, and dashed line at y = 1
+x2=ggplot(plot_data, aes(x = x_value, y = change)) +
+  geom_point(color = "blue", size = 3) +  # Plot the point for OR
+  geom_errorbar(aes(ymin = LCI, ymax = HCI), width = 0.2) +  # Add error bars for CI
+  geom_hline(yintercept = 0, linetype = "dashed", color = "red") +  # Add dashed line at y = 1
+  labs(x = "Total hours", y = "% Change & 95% CI", title = "Oil Combustion Sources") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),plot.title = element_text(size=10))  # Rotate x-axis labels for better readability
+```
+
+x3
+```{r}
+mod3= bam(log(glucose)~ X3_app*Total_hours911_930+X1_app +X2_app+X4_app+X5_app+ mean_temp+ as.factor(work2) + age+s(year,bs='ps') +  as.factor(Race4) + as.factor(edu4)+ pct_black + MEDHH + pct_poverty+pct_NoHS+s(RunningID,bs='re')+as.factor(Gender),data=gluc_wtc)
+
+results2=summary(mod3)$p.table
+results2<-as.data.table(results2,keep.rownames = TRUE)[]
+results2$`p-value`<-format(round(results2$`Pr(>|t|)`,3),nsmall=3)
+exposure = subset(results2,rn=="X3_app")
+results2<-subset(results2,rn=="X3_app:Total_hours911_930")
+
+#Get vcov
+vcov2<-vcov(mod3)
+
+s1=sqrt(vcov2[2,2] + (vcov2[22,22]*(8^2))+ (2*8*vcov2[2,22]))
+s2<- sqrt(vcov2[2,2] + (vcov2[22,22]*(30^2))+ (2*30*vcov2[2,22]))
+s3<- sqrt(vcov2[2,2] + (vcov2[22,22]*(50^2))+ (2*50*vcov2[2,22]))
+s4<- sqrt(vcov2[2,2] + (vcov2[22,22]*(70^2))+ (2*70*vcov2[2,22]))
+s5<- sqrt(vcov2[2,2] + (vcov2[22,22]*(100^2))+ (2*100*vcov2[2,22]))
+s6<- sqrt(vcov2[2,2] + (vcov2[22,22]*(120^2))+ (2*120*vcov2[2,22]))
+s7<- sqrt(vcov2[2,2] + (vcov2[22,22]*(170^2))+ (2*170*vcov2[2,22]))
+s8<- sqrt(vcov2[2,2] + (vcov2[22,22]*(200^2))+ (2*200*vcov2[2,22]))
+s9<- sqrt(vcov2[2,2] + (vcov2[22,22]*(220^2))+ (2*220*vcov2[2,22]))
+s10<- sqrt(vcov2[2,2] + (vcov2[22,22]*(240^2))+ (2*240*vcov2[2,22]))
+s11<- sqrt(vcov2[2,2] + (vcov2[22,22]*(263^2))+ (2*263*vcov2[2,22]))
+s12<- sqrt(vcov2[2,2] + (vcov2[22,22]*(150^2))+ (2*150*vcov2[2,22]))
+#Combine
+vcov<-cbind(s1,s2,s3,s4,s5,s6,s7,s8,s9,s10,s11,s12)
+
+vcov<-as.data.table(vcov)
+
+#Calculate b for the 10th and 90th % of the modifier
+results2$beta1= exposure$Estimate + 8*results2$Estimate
+results2$beta2= exposure$Estimate + 30*results2$Estimate
+results2$beta3= exposure$Estimate + 50*results2$Estimate
+results2$beta4= exposure$Estimate + 70*results2$Estimate
+results2$beta5= exposure$Estimate + 100*results2$Estimate
+results2$beta6= exposure$Estimate + 120*results2$Estimate
+results2$beta7= exposure$Estimate + 170*results2$Estimate
+results2$beta8= exposure$Estimate + 200*results2$Estimate
+results2$beta9= exposure$Estimate + 220*results2$Estimate
+results2$beta10= exposure$Estimate + 240*results2$Estimate
+results2$beta11= exposure$Estimate + 263*results2$Estimate
+results2$beta12= exposure$Estimate + 150*results2$Estimate
+
+results2$OR1<-(exp(results2$beta1*iqrs[3])-1)*100
+results2$LCI1<-(exp((results2$beta1-1.96*vcov$s1)*iqrs[3])-1)*100
+results2$HCI1<-(exp((results2$beta1+1.96*vcov$s1)*iqrs[3])-1)*100
+
+results2$OR2<-(exp(results2$beta2*iqrs[3])-1)*100
+results2$LCI2<-(exp((results2$beta2-1.96*vcov$s2)*iqrs[3])-1)*100
+results2$HCI2<-(exp((results2$beta2+1.96*vcov$s2)*iqrs[3])-1)*100
+
+results2$OR3<-(exp(results2$beta3*iqrs[3])-1)*100
+results2$LCI3<-(exp((results2$beta3-1.96*vcov$s3)*iqrs[3])-1)*100
+results2$HCI3<-(exp((results2$beta3+1.96*vcov$s3)*iqrs[3])-1)*100
+
+results2$OR4<-(exp(results2$beta4*iqrs[3])-1)*100
+results2$LCI4<-(exp((results2$beta4-1.96*vcov$s4)*iqrs[3])-1)*100
+results2$HCI4<-(exp((results2$beta4+1.96*vcov$s4)*iqrs[3])-1)*100
+
+results2$OR5<-(exp(results2$beta5*iqrs[3])-1)*100
+results2$LCI5<-(exp((results2$beta5-1.96*vcov$s5)*iqrs[3])-1)*100
+results2$HCI5<-(exp((results2$beta5+1.96*vcov$s5)*iqrs[3])-1)*100
+
+results2$OR6<-(exp(results2$beta6*iqrs[3])-1)*100
+results2$LCI6<-(exp((results2$beta6-1.96*vcov$s6)*iqrs[3])-1)*100
+results2$HCI6<-(exp((results2$beta6+1.96*vcov$s6)*iqrs[3])-1)*100
+
+results2$OR7<-(exp(results2$beta7*iqrs[3])-1)*100
+results2$LCI7<-(exp((results2$beta7-1.96*vcov$s7)*iqrs[3])-1)*100
+results2$HCI7<-(exp((results2$beta7+1.96*vcov$s7)*iqrs[3])-1)*100
+
+results2$OR8<-(exp(results2$beta8*iqrs[3])-1)*100
+results2$LCI8<-(exp((results2$beta8-1.96*vcov$s8)*iqrs[3])-1)*100
+results2$HCI8<-(exp((results2$beta8+1.96*vcov$s8)*iqrs[3])-1)*100
+
+results2$OR9<-(exp(results2$beta9*iqrs[3])-1)*100
+results2$LCI9<-(exp((results2$beta9-1.96*vcov$s9)*iqrs[3])-1)*100
+results2$HCI9<-(exp((results2$beta9+1.96*vcov$s9)*iqrs[3])-1)*100
+
+results2$OR10<-(exp(results2$beta10*iqrs[3])-1)*100
+results2$LCI10<-(exp((results2$beta10-1.96*vcov$s10)*iqrs[3])-1)*100
+results2$HCI10<-(exp((results2$beta10+1.96*vcov$s10)*iqrs[3])-1)*100
+
+results2$OR11<-(exp(results2$beta11*iqrs[3])-1)*100
+results2$LCI11<-(exp((results2$beta11-1.96*vcov$s11)*iqrs[3])-1)*100
+results2$HCI11<-(exp((results2$beta11+1.96*vcov$s11)*iqrs[3])-1)*100
+
+results2$OR12<-(exp(results2$beta12*iqrs[3])-1)*100
+results2$LCI12<-(exp((results2$beta12-1.96*vcov$s12)*iqrs[3])-1)*100
+results2$HCI12<-(exp((results2$beta12+1.96*vcov$s12)*iqrs[3])-1)*100
+
+plot_data <- data.table(
+  x_value = x_values,  # Set the x-axis values (before *Estimate)
+  change = c(results2$OR1, results2$OR2, results2$OR3, results2$OR4, results2$OR5, results2$OR6, results2$OR12,results2$OR7, results2$OR8, results2$OR9, results2$OR10, results2$OR11),
+  LCI = c(results2$LCI1, results2$LCI2, results2$LCI3, results2$LCI4, results2$LCI5, results2$LCI6, results2$LCI12,results2$LCI7, results2$LCI8, results2$LCI9, results2$LCI10, results2$LCI11),
+  HCI = c(results2$HCI1, results2$HCI2, results2$HCI3, results2$HCI4, results2$HCI5, results2$HCI6, results2$HCI12,results2$HCI7, results2$HCI8, results2$HCI9, results2$HCI10, results2$HCI11)
+)
+
+# Create the plot with custom x-axis values, updated title, and dashed line at y = 1
+x3=ggplot(plot_data, aes(x = x_value, y = change)) +
+  geom_point(color = "blue", size = 3) +  # Plot the point for OR
+  geom_errorbar(aes(ymin = LCI, ymax = HCI), width = 0.2) +  # Add error bars for CI
+  geom_hline(yintercept = 0, linetype = "dashed", color = "red") +  # Add dashed line at y = 1
+  labs(x = "Total hours", y = "% Change & 95% CI", title = "Metal Industry Sources") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),plot.title = element_text(size=10))  # Rotate x-axis labels for better readability
+```
+
+x4
+```{r}
+mod4= bam(log(glucose)~ X4_app*Total_hours911_930+X1_app +X2_app+X3_app+X5_app+ mean_temp+ as.factor(work2) + age+s(year,bs='ps') +  as.factor(Race4) + as.factor(edu4)+ pct_black + MEDHH + pct_poverty+pct_NoHS+s(RunningID,bs='re')+as.factor(Gender),data=gluc_wtc)
+
+results2=summary(mod4)$p.table
+results2<-as.data.table(results2,keep.rownames = TRUE)[]
+results2$`p-value`<-format(round(results2$`Pr(>|t|)`,3),nsmall=3)
+exposure = subset(results2,rn=="X4_app")
+results2<-subset(results2,rn=="X4_app:Total_hours911_930")
+
+#Get vcov
+vcov2<-vcov(mod4)
+
+s1=sqrt(vcov2[2,2] + (vcov2[22,22]*(8^2))+ (2*8*vcov2[2,22]))
+s2<- sqrt(vcov2[2,2] + (vcov2[22,22]*(30^2))+ (2*30*vcov2[2,22]))
+s3<- sqrt(vcov2[2,2] + (vcov2[22,22]*(50^2))+ (2*50*vcov2[2,22]))
+s4<- sqrt(vcov2[2,2] + (vcov2[22,22]*(70^2))+ (2*70*vcov2[2,22]))
+s5<- sqrt(vcov2[2,2] + (vcov2[22,22]*(100^2))+ (2*100*vcov2[2,22]))
+s6<- sqrt(vcov2[2,2] + (vcov2[22,22]*(120^2))+ (2*120*vcov2[2,22]))
+s7<- sqrt(vcov2[2,2] + (vcov2[22,22]*(170^2))+ (2*170*vcov2[2,22]))
+s8<- sqrt(vcov2[2,2] + (vcov2[22,22]*(200^2))+ (2*200*vcov2[2,22]))
+s9<- sqrt(vcov2[2,2] + (vcov2[22,22]*(220^2))+ (2*220*vcov2[2,22]))
+s10<- sqrt(vcov2[2,2] + (vcov2[22,22]*(240^2))+ (2*240*vcov2[2,22]))
+s11<- sqrt(vcov2[2,2] + (vcov2[22,22]*(263^2))+ (2*263*vcov2[2,22]))
+s12<- sqrt(vcov2[2,2] + (vcov2[22,22]*(150^2))+ (2*150*vcov2[2,22]))
+#Combine
+vcov<-cbind(s1,s2,s3,s4,s5,s6,s7,s8,s9,s10,s11,s12)
+
+vcov<-as.data.table(vcov)
+
+#Calculate b for the 10th and 90th % of the modifier
+results2$beta1= exposure$Estimate + 8*results2$Estimate
+results2$beta2= exposure$Estimate + 30*results2$Estimate
+results2$beta3= exposure$Estimate + 50*results2$Estimate
+results2$beta4= exposure$Estimate + 70*results2$Estimate
+results2$beta5= exposure$Estimate + 100*results2$Estimate
+results2$beta6= exposure$Estimate + 120*results2$Estimate
+results2$beta7= exposure$Estimate + 170*results2$Estimate
+results2$beta8= exposure$Estimate + 200*results2$Estimate
+results2$beta9= exposure$Estimate + 220*results2$Estimate
+results2$beta10= exposure$Estimate + 240*results2$Estimate
+results2$beta11= exposure$Estimate + 263*results2$Estimate
+results2$beta12= exposure$Estimate + 150*results2$Estimate
+
+results2$OR1<-(exp(results2$beta1*iqrs[4])-1)*100
+results2$LCI1<-(exp((results2$beta1-1.96*vcov$s1)*iqrs[4])-1)*100
+results2$HCI1<-(exp((results2$beta1+1.96*vcov$s1)*iqrs[4])-1)*100
+
+results2$OR2<-(exp(results2$beta2*iqrs[4])-1)*100
+results2$LCI2<-(exp((results2$beta2-1.96*vcov$s2)*iqrs[4])-1)*100
+results2$HCI2<-(exp((results2$beta2+1.96*vcov$s2)*iqrs[4])-1)*100
+
+results2$OR3<-(exp(results2$beta3*iqrs[4])-1)*100
+results2$LCI3<-(exp((results2$beta3-1.96*vcov$s3)*iqrs[4])-1)*100
+results2$HCI3<-(exp((results2$beta3+1.96*vcov$s3)*iqrs[4])-1)*100
+
+results2$OR4<-(exp(results2$beta4*iqrs[4])-1)*100
+results2$LCI4<-(exp((results2$beta4-1.96*vcov$s4)*iqrs[4])-1)*100
+results2$HCI4<-(exp((results2$beta4+1.96*vcov$s4)*iqrs[4])-1)*100
+
+results2$OR5<-(exp(results2$beta5*iqrs[4])-1)*100
+results2$LCI5<-(exp((results2$beta5-1.96*vcov$s5)*iqrs[4])-1)*100
+results2$HCI5<-(exp((results2$beta5+1.96*vcov$s5)*iqrs[4])-1)*100
+
+results2$OR6<-(exp(results2$beta6*iqrs[4])-1)*100
+results2$LCI6<-(exp((results2$beta6-1.96*vcov$s6)*iqrs[4])-1)*100
+results2$HCI6<-(exp((results2$beta6+1.96*vcov$s6)*iqrs[4])-1)*100
+
+results2$OR7<-(exp(results2$beta7*iqrs[4])-1)*100
+results2$LCI7<-(exp((results2$beta7-1.96*vcov$s7)*iqrs[4])-1)*100
+results2$HCI7<-(exp((results2$beta7+1.96*vcov$s7)*iqrs[4])-1)*100
+
+results2$OR8<-(exp(results2$beta8*iqrs[4])-1)*100
+results2$LCI8<-(exp((results2$beta8-1.96*vcov$s8)*iqrs[4])-1)*100
+results2$HCI8<-(exp((results2$beta8+1.96*vcov$s8)*iqrs[4])-1)*100
+
+results2$OR9<-(exp(results2$beta9*iqrs[4])-1)*100
+results2$LCI9<-(exp((results2$beta9-1.96*vcov$s9)*iqrs[4])-1)*100
+results2$HCI9<-(exp((results2$beta9+1.96*vcov$s9)*iqrs[4])-1)*100
+
+results2$OR10<-(exp(results2$beta10*iqrs[4])-1)*100
+results2$LCI10<-(exp((results2$beta10-1.96*vcov$s10)*iqrs[4])-1)*100
+results2$HCI10<-(exp((results2$beta10+1.96*vcov$s10)*iqrs[4])-1)*100
+
+results2$OR11<-(exp(results2$beta11*iqrs[4])-1)*100
+results2$LCI11<-(exp((results2$beta11-1.96*vcov$s11)*iqrs[4])-1)*100
+results2$HCI11<-(exp((results2$beta11+1.96*vcov$s11)*iqrs[4])-1)*100
+
+results2$OR12<-(exp(results2$beta12*iqrs[4])-1)*100
+results2$LCI12<-(exp((results2$beta12-1.96*vcov$s12)*iqrs[4])-1)*100
+results2$HCI12<-(exp((results2$beta12+1.96*vcov$s12)*iqrs[4])-1)*100
+
+plot_data <- data.table(
+  x_value = x_values,  # Set the x-axis values (before *Estimate)
+  change = c(results2$OR1, results2$OR2, results2$OR3, results2$OR4, results2$OR5, results2$OR6, results2$OR12,results2$OR7, results2$OR8, results2$OR9, results2$OR10, results2$OR11),
+  LCI = c(results2$LCI1, results2$LCI2, results2$LCI3, results2$LCI4, results2$LCI5, results2$LCI6, results2$LCI12,results2$LCI7, results2$LCI8, results2$LCI9, results2$LCI10, results2$LCI11),
+  HCI = c(results2$HCI1, results2$HCI2, results2$HCI3, results2$HCI4, results2$HCI5, results2$HCI6, results2$HCI12,results2$HCI7, results2$HCI8, results2$HCI9, results2$HCI10, results2$HCI11)
+)
+
+# Create the plot with custom x-axis values, updated title, and dashed line at y = 1
+x4=ggplot(plot_data, aes(x = x_value, y = change)) +
+  geom_point(color = "blue", size = 3) +  # Plot the point for OR
+  geom_errorbar(aes(ymin = LCI, ymax = HCI), width = 0.2) +  # Add error bars for CI
+  geom_hline(yintercept = 0, linetype = "dashed", color = "red") +  # Add dashed line at y = 1
+  labs(x = "Total hours", y = "% Change & 95% CI", title = "Industry Sources") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),plot.title = element_text(size=10))  # Rotate x-axis labels for better readability
+```
+
+x5
+```{r}
+mod5= bam(log(glucose)~ X5_app*Total_hours911_930+X1_app +X2_app+X3_app+X4_app+ mean_temp+ as.factor(work2) + age+s(year,bs='ps') +  as.factor(Race4) + as.factor(edu4)+ pct_black + MEDHH + pct_poverty+pct_NoHS+s(RunningID,bs='re')+as.factor(Gender),data=gluc_wtc)
+
+results2=summary(mod5)$p.table
+results2<-as.data.table(results2,keep.rownames = TRUE)[]
+results2$`p-value`<-format(round(results2$`Pr(>|t|)`,3),nsmall=3)
+exposure = subset(results2,rn=="X5_app")
+results2<-subset(results2,rn=="X5_app:Total_hours911_930")
+
+#Get vcov
+vcov2<-vcov(mod5)
+
+s1=sqrt(vcov2[2,2] + (vcov2[22,22]*(8^2))+ (2*8*vcov2[2,22]))
+s2<- sqrt(vcov2[2,2] + (vcov2[22,22]*(30^2))+ (2*30*vcov2[2,22]))
+s3<- sqrt(vcov2[2,2] + (vcov2[22,22]*(50^2))+ (2*50*vcov2[2,22]))
+s4<- sqrt(vcov2[2,2] + (vcov2[22,22]*(70^2))+ (2*70*vcov2[2,22]))
+s5<- sqrt(vcov2[2,2] + (vcov2[22,22]*(100^2))+ (2*100*vcov2[2,22]))
+s6<- sqrt(vcov2[2,2] + (vcov2[22,22]*(120^2))+ (2*120*vcov2[2,22]))
+s7<- sqrt(vcov2[2,2] + (vcov2[22,22]*(170^2))+ (2*170*vcov2[2,22]))
+s8<- sqrt(vcov2[2,2] + (vcov2[22,22]*(200^2))+ (2*200*vcov2[2,22]))
+s9<- sqrt(vcov2[2,2] + (vcov2[22,22]*(220^2))+ (2*220*vcov2[2,22]))
+s10<- sqrt(vcov2[2,2] + (vcov2[22,22]*(240^2))+ (2*240*vcov2[2,22]))
+s11<- sqrt(vcov2[2,2] + (vcov2[22,22]*(263^2))+ (2*263*vcov2[2,22]))
+s12<- sqrt(vcov2[2,2] + (vcov2[22,22]*(150^2))+ (2*150*vcov2[2,22]))
+#Combine
+vcov<-cbind(s1,s2,s3,s4,s5,s6,s7,s8,s9,s10,s11,s12)
+
+vcov<-as.data.table(vcov)
+
+#Calculate b for the 10th and 90th % of the modifier
+results2$beta1= exposure$Estimate + 8*results2$Estimate
+results2$beta2= exposure$Estimate + 30*results2$Estimate
+results2$beta3= exposure$Estimate + 50*results2$Estimate
+results2$beta4= exposure$Estimate + 70*results2$Estimate
+results2$beta5= exposure$Estimate + 100*results2$Estimate
+results2$beta6= exposure$Estimate + 120*results2$Estimate
+results2$beta7= exposure$Estimate + 170*results2$Estimate
+results2$beta8= exposure$Estimate + 200*results2$Estimate
+results2$beta9= exposure$Estimate + 220*results2$Estimate
+results2$beta10= exposure$Estimate + 240*results2$Estimate
+results2$beta11= exposure$Estimate + 263*results2$Estimate
+results2$beta12= exposure$Estimate + 150*results2$Estimate
+
+results2$OR1<-(exp(results2$beta1*iqrs[4])-1)*100
+results2$LCI1<-(exp((results2$beta1-1.96*vcov$s1)*iqrs[4])-1)*100
+results2$HCI1<-(exp((results2$beta1+1.96*vcov$s1)*iqrs[4])-1)*100
+
+results2$OR2<-(exp(results2$beta2*iqrs[5])-1)*100
+results2$LCI2<-(exp((results2$beta2-1.96*vcov$s2)*iqrs[5])-1)*100
+results2$HCI2<-(exp((results2$beta2+1.96*vcov$s2)*iqrs[5])-1)*100
+
+results2$OR3<-(exp(results2$beta3*iqrs[5])-1)*100
+results2$LCI3<-(exp((results2$beta3-1.96*vcov$s3)*iqrs[5])-1)*100
+results2$HCI3<-(exp((results2$beta3+1.96*vcov$s3)*iqrs[5])-1)*100
+
+results2$OR4<-(exp(results2$beta4*iqrs[5])-1)*100
+results2$LCI4<-(exp((results2$beta4-1.96*vcov$s4)*iqrs[5])-1)*100
+results2$HCI4<-(exp((results2$beta4+1.96*vcov$s4)*iqrs[5])-1)*100
+
+results2$OR5<-(exp(results2$beta5*iqrs[5])-1)*100
+results2$LCI5<-(exp((results2$beta5-1.96*vcov$s5)*iqrs[5])-1)*100
+results2$HCI5<-(exp((results2$beta5+1.96*vcov$s5)*iqrs[5])-1)*100
+
+results2$OR6<-(exp(results2$beta6*iqrs[5])-1)*100
+results2$LCI6<-(exp((results2$beta6-1.96*vcov$s6)*iqrs[5])-1)*100
+results2$HCI6<-(exp((results2$beta6+1.96*vcov$s6)*iqrs[5])-1)*100
+
+results2$OR7<-(exp(results2$beta7*iqrs[5])-1)*100
+results2$LCI7<-(exp((results2$beta7-1.96*vcov$s7)*iqrs[5])-1)*100
+results2$HCI7<-(exp((results2$beta7+1.96*vcov$s7)*iqrs[5])-1)*100
+
+results2$OR8<-(exp(results2$beta8*iqrs[5])-1)*100
+results2$LCI8<-(exp((results2$beta8-1.96*vcov$s8)*iqrs[5])-1)*100
+results2$HCI8<-(exp((results2$beta8+1.96*vcov$s8)*iqrs[5])-1)*100
+
+results2$OR9<-(exp(results2$beta9*iqrs[5])-1)*100
+results2$LCI9<-(exp((results2$beta9-1.96*vcov$s9)*iqrs[5])-1)*100
+results2$HCI9<-(exp((results2$beta9+1.96*vcov$s9)*iqrs[5])-1)*100
+
+results2$OR10<-(exp(results2$beta10*iqrs[5])-1)*100
+results2$LCI10<-(exp((results2$beta10-1.96*vcov$s10)*iqrs[5])-1)*100
+results2$HCI10<-(exp((results2$beta10+1.96*vcov$s10)*iqrs[5])-1)*100
+
+results2$OR11<-(exp(results2$beta11*iqrs[5])-1)*100
+results2$LCI11<-(exp((results2$beta11-1.96*vcov$s11)*iqrs[5])-1)*100
+results2$HCI11<-(exp((results2$beta11+1.96*vcov$s11)*iqrs[5])-1)*100
+
+results2$OR12<-(exp(results2$beta12*iqrs[5])-1)*100
+results2$LCI12<-(exp((results2$beta12-1.96*vcov$s12)*iqrs[5])-1)*100
+results2$HCI12<-(exp((results2$beta12+1.96*vcov$s12)*iqrs[5])-1)*100
+
+plot_data <- data.table(
+  x_value = x_values,  # Set the x-axis values (before *Estimate)
+  change = c(results2$OR1, results2$OR2, results2$OR3, results2$OR4, results2$OR5, results2$OR6, results2$OR12,results2$OR7, results2$OR8, results2$OR9, results2$OR10, results2$OR11),
+  LCI = c(results2$LCI1, results2$LCI2, results2$LCI3, results2$LCI4, results2$LCI5, results2$LCI6, results2$LCI12,results2$LCI7, results2$LCI8, results2$LCI9, results2$LCI10, results2$LCI11),
+  HCI = c(results2$HCI1, results2$HCI2, results2$HCI3, results2$HCI4, results2$HCI5, results2$HCI6, results2$HCI12,results2$HCI7, results2$HCI8, results2$HCI9, results2$HCI10, results2$HCI11)
+)
+
+# Create the plot with custom x-axis values, updated title, and dashed line at y = 1
+x5=ggplot(plot_data, aes(x = x_value, y = change)) +
+  geom_point(color = "blue", size = 3) +  # Plot the point for OR
+  geom_errorbar(aes(ymin = LCI, ymax = HCI), width = 0.2) +  # Add error bars for CI
+  geom_hline(yintercept = 0, linetype = "dashed", color = "red") +  # Add dashed line at y = 1
+  labs(x = "Total hours", y = "% Change & 95% CI", title = "MVRD Sources") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),plot.title = element_text(size=10))  # Rotate x-axis labels for better readability
+```
+
+```{r}
+tiff("C:/Users/furmah01/OneDrive - The Mount Sinai Hospital/WTC new data 2022/Helena -aim 2/For paper/Diab_interaction.tiff", units="in", width=6, height=5, res=300)
+
+library(gridExtra)
+grid.arrange(pm, x1,x2,x3,x4,x5, nrow = 2)
+
+dev.off()
+```
+
+####################   Diabetets
+```{r}
+y_values <- c(1, 15, 30, 50, 70, 90, 100,120, 140, 160, 180, 200)
+```
+
+pm
+```{r}
+mod= bam(log(glucose)~ pm*total_days_October_June+mean_temp + as.factor(work2)+ age+s(year,bs='ps') +  as.factor(Race4) + as.factor(edu4)+ pct_black + MEDHH + pct_poverty+pct_NoHS+s(RunningID,bs='re') + as.factor(Gender),data=gluc_wtc)
+
+results2=summary(mod)$p.table
+results2<-as.data.table(results2,keep.rownames = TRUE)[]
+results2$`p-value`<-format(round(results2$`Pr(>|t|)`,3),nsmall=3)
+exposure = subset(results2,rn=="pm")
+results2<-subset(results2,rn=="pm:total_days_October_June")
+
+#Get vcov
+vcov2<-vcov(mod)
+
+s1=sqrt(vcov2[2,2] + (vcov2[18,18]*(1^2))+ (2*1*vcov2[2,18]))
+s2<- sqrt(vcov2[2,2] + (vcov2[18,18]*(15^2))+ (2*15*vcov2[2,18]))
+s3<- sqrt(vcov2[2,2] + (vcov2[18,18]*(30^2))+ (2*30*vcov2[2,18]))
+s4<- sqrt(vcov2[2,2] + (vcov2[18,18]*(50^2))+ (2*50*vcov2[2,18]))
+s5<- sqrt(vcov2[2,2] + (vcov2[18,18]*(70^2))+ (2*70*vcov2[2,18]))
+s6<- sqrt(vcov2[2,2] + (vcov2[18,18]*(90^2))+ (2*90*vcov2[2,18]))
+s7<- sqrt(vcov2[2,2] + (vcov2[18,18]*(100^2))+ (2*100*vcov2[2,18]))
+s8<- sqrt(vcov2[2,2] + (vcov2[18,18]*(120^2))+ (2*120*vcov2[2,18]))
+s9<- sqrt(vcov2[2,2] + (vcov2[18,18]*(140^2))+ (2*140*vcov2[2,18]))
+s10<- sqrt(vcov2[2,2] + (vcov2[18,18]*(160^2))+ (2*160*vcov2[2,18]))
+s11<- sqrt(vcov2[2,2] + (vcov2[18,18]*(180^2))+ (2*180*vcov2[2,18]))
+s12<- sqrt(vcov2[2,2] + (vcov2[18,18]*(200^2))+ (2*200*vcov2[2,18]))
+
+#Combine
+vcov<-cbind(s1,s2,s3,s4,s5,s6,s7,s8,s9,s10,s11,s12)
+vcov<-as.data.table(vcov)
+
+#Calculate b for the 10th and 90th % of the modifier
+results2$beta1= exposure$Estimate + 1*results2$Estimate
+results2$beta2= exposure$Estimate + 15*results2$Estimate
+results2$beta3= exposure$Estimate + 30*results2$Estimate
+results2$beta4= exposure$Estimate + 50*results2$Estimate
+results2$beta5= exposure$Estimate + 70*results2$Estimate
+results2$beta6= exposure$Estimate + 90*results2$Estimate
+results2$beta7= exposure$Estimate + 100*results2$Estimate
+results2$beta8= exposure$Estimate + 120*results2$Estimate
+results2$beta9= exposure$Estimate + 140*results2$Estimate
+results2$beta10= exposure$Estimate + 160*results2$Estimate
+results2$beta11= exposure$Estimate + 180*results2$Estimate
+results2$beta12= exposure$Estimate + 200*results2$Estimate
+
+results2$OR1<-(exp(results2$beta1*iqrs2)-1)*100
+results2$LCI1<-(exp((results2$beta1-1.96*vcov$s1)*iqrs2)-1)*100
+results2$HCI1<-(exp((results2$beta1+1.96*vcov$s1)*iqrs2)-1)*100
+
+results2$OR2<-(exp(results2$beta2*iqrs2)-1)*100
+results2$LCI2<-(exp((results2$beta2-1.96*vcov$s2)*iqrs2)-1)*100
+results2$HCI2<-(exp((results2$beta2+1.96*vcov$s2)*iqrs2)-1)*100
+
+results2$OR3<-(exp(results2$beta3*iqrs2)-1)*100
+results2$LCI3<-(exp((results2$beta3-1.96*vcov$s3)*iqrs2)-1)*100
+results2$HCI3<-(exp((results2$beta3+1.96*vcov$s3)*iqrs2)-1)*100
+
+results2$OR4<-(exp(results2$beta4*iqrs2)-1)*100
+results2$LCI4<-(exp((results2$beta4-1.96*vcov$s4)*iqrs2)-1)*100
+results2$HCI4<-(exp((results2$beta4+1.96*vcov$s4)*iqrs2)-1)*100
+
+results2$OR5<-(exp(results2$beta5*iqrs2)-1)*100
+results2$LCI5<-(exp((results2$beta5-1.96*vcov$s5)*iqrs2)-1)*100
+results2$HCI5<-(exp((results2$beta5+1.96*vcov$s5)*iqrs2)-1)*100
+
+results2$OR6<-(exp(results2$beta6*iqrs2)-1)*100
+results2$LCI6<-(exp((results2$beta6-1.96*vcov$s6)*iqrs2)-1)*100
+results2$HCI6<-(exp((results2$beta6+1.96*vcov$s6)*iqrs2)-1)*100
+
+results2$OR7<-(exp(results2$beta7*iqrs2)-1)*100
+results2$LCI7<-(exp((results2$beta7-1.96*vcov$s7)*iqrs2)-1)*100
+results2$HCI7<-(exp((results2$beta7+1.96*vcov$s7)*iqrs2)-1)*100
+
+results2$OR8<-(exp(results2$beta8*iqrs2)-1)*100
+results2$LCI8<-(exp((results2$beta8-1.96*vcov$s8)*iqrs2)-1)*100
+results2$HCI8<-(exp((results2$beta8+1.96*vcov$s8)*iqrs2)-1)*100
+
+results2$OR9<-(exp(results2$beta9*iqrs2)-1)*100
+results2$LCI9<-(exp((results2$beta9-1.96*vcov$s9)*iqrs2)-1)*100
+results2$HCI9<-(exp((results2$beta9+1.96*vcov$s9)*iqrs2)-1)*100
+
+results2$OR10<-(exp(results2$beta10*iqrs2)-1)*100
+results2$LCI10<-(exp((results2$beta10-1.96*vcov$s10)*iqrs2)-1)*100
+results2$HCI10<-(exp((results2$beta10+1.96*vcov$s10)*iqrs2)-1)*100
+
+results2$OR11<-(exp(results2$beta11*iqrs2)-1)*100
+results2$LCI11<-(exp((results2$beta11-1.96*vcov$s11)*iqrs2)-1)*100
+results2$HCI11<-(exp((results2$beta11+1.96*vcov$s11)*iqrs2)-1)*100
+
+results2$OR12<-(exp(results2$beta12*iqrs2)-1)*100
+results2$LCI12<-(exp((results2$beta12-1.96*vcov$s12)*iqrs2)-1)*100
+results2$HCI12<-(exp((results2$beta12+1.96*vcov$s12)*iqrs2)-1)*100
+
+# Create the plot data with the custom x-axis values
+plot_data <- data.table(
+  y_value = y_values,  # Set the x-axis values (before *Estimate)
+  RR = c(results2$OR1, results2$OR2, results2$OR3, results2$OR4, results2$OR5, results2$OR6, results2$OR7, results2$OR8, results2$OR9, results2$OR10, results2$OR11,results2$OR12),
+  LCI = c(results2$LCI1, results2$LCI2, results2$LCI3, results2$LCI4, results2$LCI5, results2$LCI6,results2$LCI7, results2$LCI8, results2$LCI9, results2$LCI10, results2$LCI11, results2$LCI12),
+  HCI = c(results2$HCI1, results2$HCI2, results2$HCI3, results2$HCI4, results2$HCI5, results2$HCI6,results2$HCI7, results2$HCI8, results2$HCI9, results2$HCI10, results2$HCI11, results2$HCI12)
+)
+
+# Create the plot with custom x-axis values, updated title, and dashed line at y = 1
+pm=ggplot(plot_data, aes(x = y_value, y = RR)) +
+  geom_point(color = "blue", size = 3) +  # Plot the point for OR
+  geom_errorbar(aes(ymin = LCI, ymax = HCI), width = 0.2) +  # Add error bars for CI
+  geom_hline(yintercept = 0, linetype = "dashed", color = "red") +  # Add dashed line at y = 1
+  labs(x = "Total hours", y = "RR (95% CI)", title = "PM2.5") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),plot.title = element_text(size=10))  # Rotate x-axis labels for better readability
+```
+
+x1
+```{r}
+mod1= bam(log(glucose)~ X1_app*total_days_October_June+X2_app +X3_app+X4_app+X5_app+ mean_temp+ as.factor(work2) + age+s(year,bs='ps') +  as.factor(Race4) + as.factor(edu4)+ pct_black + MEDHH + pct_poverty+pct_NoHS+s(RunningID,bs='re')+as.factor(Gender),data=gluc_wtc)
+
+results2=summary(mod1)$p.table
+results2<-as.data.table(results2,keep.rownames = TRUE)[]
+results2$`p-value`<-format(round(results2$`Pr(>|t|)`,3),nsmall=3)
+exposure = subset(results2,rn=="X1_app")
+results2<-subset(results2,rn=="X1_app:total_days_October_June")
+
+#Get vcov
+vcov2<-vcov(mod1)
+
+s1=sqrt(vcov2[2,2] + (vcov2[22,22]*(1^2))+ (2*1*vcov2[2,22]))
+s2<- sqrt(vcov2[2,2] + (vcov2[22,22]*(15^2))+ (2*15*vcov2[2,22]))
+s3<- sqrt(vcov2[2,2] + (vcov2[22,22]*(30^2))+ (2*30*vcov2[2,22]))
+s4<- sqrt(vcov2[2,2] + (vcov2[22,22]*(50^2))+ (2*50*vcov2[2,22]))
+s5<- sqrt(vcov2[2,2] + (vcov2[22,22]*(70^2))+ (2*70*vcov2[2,22]))
+s6<- sqrt(vcov2[2,2] + (vcov2[22,22]*(90^2))+ (2*90*vcov2[2,22]))
+s7<- sqrt(vcov2[2,2] + (vcov2[22,22]*(100^2))+ (2*100*vcov2[2,22]))
+s8<- sqrt(vcov2[2,2] + (vcov2[22,22]*(120^2))+ (2*120*vcov2[2,22]))
+s9<- sqrt(vcov2[2,2] + (vcov2[22,22]*(140^2))+ (2*140*vcov2[2,22]))
+s10<- sqrt(vcov2[2,2] + (vcov2[22,22]*(160^2))+ (2*160*vcov2[2,22]))
+s11<- sqrt(vcov2[2,2] + (vcov2[22,22]*(180^2))+ (2*180*vcov2[2,22]))
+s12<- sqrt(vcov2[2,2] + (vcov2[22,22]*(200^2))+ (2*200*vcov2[2,22]))
+#Combine
+vcov<-cbind(s1,s2,s3,s4,s5,s6,s7,s8,s9,s10,s11,s12)
+
+vcov<-as.data.table(vcov)
+
+#Calculate b for the 10th and 90th % of the modifier
+vcov<-cbind(s1,s2,s3,s4,s5,s6,s7,s8,s9,s10,s11,s12)
+vcov<-as.data.table(vcov)
+
+#Calculate b for the 10th and 90th % of the modifier
+results2$beta1= exposure$Estimate + 1*results2$Estimate
+results2$beta2= exposure$Estimate + 15*results2$Estimate
+results2$beta3= exposure$Estimate + 30*results2$Estimate
+results2$beta4= exposure$Estimate + 50*results2$Estimate
+results2$beta5= exposure$Estimate + 70*results2$Estimate
+results2$beta6= exposure$Estimate + 90*results2$Estimate
+results2$beta7= exposure$Estimate + 100*results2$Estimate
+results2$beta8= exposure$Estimate + 120*results2$Estimate
+results2$beta9= exposure$Estimate + 140*results2$Estimate
+results2$beta10= exposure$Estimate + 160*results2$Estimate
+results2$beta11= exposure$Estimate + 180*results2$Estimate
+results2$beta12= exposure$Estimate + 200*results2$Estimate
+
+results2$OR1<-(exp(results2$beta1*iqrs[1])-1)*100
+results2$LCI1<-(exp((results2$beta1-1.96*vcov$s1)*iqrs[1])-1)*100
+results2$HCI1<-(exp((results2$beta1+1.96*vcov$s1)*iqrs[1])-1)*100
+
+results2$OR2<-(exp(results2$beta2*iqrs[1])-1)*100
+results2$LCI2<-(exp((results2$beta2-1.96*vcov$s2)*iqrs[1])-1)*100
+results2$HCI2<-(exp((results2$beta2+1.96*vcov$s2)*iqrs[1])-1)*100
+
+results2$OR3<-(exp(results2$beta3*iqrs[1])-1)*100
+results2$LCI3<-(exp((results2$beta3-1.96*vcov$s3)*iqrs[1])-1)*100
+results2$HCI3<-(exp((results2$beta3+1.96*vcov$s3)*iqrs[1])-1)*100
+
+results2$OR4<-(exp(results2$beta4*iqrs[1])-1)*100
+results2$LCI4<-(exp((results2$beta4-1.96*vcov$s4)*iqrs[1])-1)*100
+results2$HCI4<-(exp((results2$beta4+1.96*vcov$s4)*iqrs[1])-1)*100
+
+results2$OR5<-(exp(results2$beta5*iqrs[1])-1)*100
+results2$LCI5<-(exp((results2$beta5-1.96*vcov$s5)*iqrs[1])-1)*100
+results2$HCI5<-(exp((results2$beta5+1.96*vcov$s5)*iqrs[1])-1)*100
+
+results2$OR6<-(exp(results2$beta6*iqrs[1])-1)*100
+results2$LCI6<-(exp((results2$beta6-1.96*vcov$s6)*iqrs[1])-1)*100
+results2$HCI6<-(exp((results2$beta6+1.96*vcov$s6)*iqrs[1])-1)*100
+
+results2$OR7<-(exp(results2$beta7*iqrs[1])-1)*100
+results2$LCI7<-(exp((results2$beta7-1.96*vcov$s7)*iqrs[1])-1)*100
+results2$HCI7<-(exp((results2$beta7+1.96*vcov$s7)*iqrs[1])-1)*100
+
+results2$OR8<-(exp(results2$beta8*iqrs[1])-1)*100
+results2$LCI8<-(exp((results2$beta8-1.96*vcov$s8)*iqrs[1])-1)*100
+results2$HCI8<-(exp((results2$beta8+1.96*vcov$s8)*iqrs[1])-1)*100
+
+results2$OR9<-(exp(results2$beta9*iqrs[1])-1)*100
+results2$LCI9<-(exp((results2$beta9-1.96*vcov$s9)*iqrs[1])-1)*100
+results2$HCI9<-(exp((results2$beta9+1.96*vcov$s9)*iqrs[1])-1)*100
+
+results2$OR10<-(exp(results2$beta10*iqrs[1])-1)*100
+results2$LCI10<-(exp((results2$beta10-1.96*vcov$s10)*iqrs[1])-1)*100
+results2$HCI10<-(exp((results2$beta10+1.96*vcov$s10)*iqrs[1])-1)*100
+
+results2$OR11<-(exp(results2$beta11*iqrs[1])-1)*100
+results2$LCI11<-(exp((results2$beta11-1.96*vcov$s11)*iqrs[1])-1)*100
+results2$HCI11<-(exp((results2$beta11+1.96*vcov$s11)*iqrs[1])-1)*100
+
+results2$OR12<-(exp(results2$beta12*iqrs[1])-1)*100
+results2$LCI12<-(exp((results2$beta12-1.96*vcov$s12)*iqrs[1])-1)*100
+results2$HCI12<-(exp((results2$beta12+1.96*vcov$s12)*iqrs[1])-1)*100
+
+plot_data <- data.table(
+  y_value = y_values,  # Set the x-axis values (before *Estimate)
+  RR = c(results2$OR1, results2$OR2, results2$OR3, results2$OR4, results2$OR5, results2$OR6, results2$OR7, results2$OR8, results2$OR9, results2$OR10, results2$OR11,results2$OR12),
+  LCI = c(results2$LCI1, results2$LCI2, results2$LCI3, results2$LCI4, results2$LCI5, results2$LCI6,results2$LCI7, results2$LCI8, results2$LCI9, results2$LCI10, results2$LCI11, results2$LCI12),
+  HCI = c(results2$HCI1, results2$HCI2, results2$HCI3, results2$HCI4, results2$HCI5, results2$HCI6,results2$HCI7, results2$HCI8, results2$HCI9, results2$HCI10, results2$HCI11, results2$HCI12)
+)
+
+# Create the plot with custom x-axis values, updated title, and dashed line at y = 1
+x1=ggplot(plot_data, aes(x = y_value, y = RR)) +
+  geom_point(color = "blue", size = 3) +  # Plot the point for OR
+  geom_errorbar(aes(ymin = LCI, ymax = HCI), width = 0.2) +  # Add error bars for CI
+  geom_hline(yintercept = 0, linetype = "dashed", color = "red") +  # Add dashed line at y = 1
+  labs(x = "Total hours", y = "RR (95% CI)", title = "Biomass Burning Sources") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),plot.title = element_text(size=10))  # Rotate x-axis labels for better readability
+```
+
+x2
+```{r}
+mod2= bam(log(glucose)~ X2_app*total_days_October_June+X1_app +X3_app+X4_app+X5_app+ mean_temp+ as.factor(work2) + age+s(year,bs='ps') +  as.factor(Race4) + as.factor(edu4)+ pct_black + MEDHH + pct_poverty+pct_NoHS+s(RunningID,bs='re')+as.factor(Gender),data=gluc_wtc)
+
+results2=summary(mod2)$p.table
+results2<-as.data.table(results2,keep.rownames = TRUE)[]
+results2$`p-value`<-format(round(results2$`Pr(>|t|)`,3),nsmall=3)
+exposure = subset(results2,rn=="X2_app")
+results2<-subset(results2,rn=="X2_app:total_days_October_June")
+
+#Get vcov
+vcov2<-vcov(mod2)
+
+s1=sqrt(vcov2[2,2] + (vcov2[22,22]*(1^2))+ (2*1*vcov2[2,22]))
+s2<- sqrt(vcov2[2,2] + (vcov2[22,22]*(15^2))+ (2*15*vcov2[2,22]))
+s3<- sqrt(vcov2[2,2] + (vcov2[22,22]*(30^2))+ (2*30*vcov2[2,22]))
+s4<- sqrt(vcov2[2,2] + (vcov2[22,22]*(50^2))+ (2*50*vcov2[2,22]))
+s5<- sqrt(vcov2[2,2] + (vcov2[22,22]*(70^2))+ (2*70*vcov2[2,22]))
+s6<- sqrt(vcov2[2,2] + (vcov2[22,22]*(90^2))+ (2*90*vcov2[2,22]))
+s7<- sqrt(vcov2[2,2] + (vcov2[22,22]*(100^2))+ (2*100*vcov2[2,22]))
+s8<- sqrt(vcov2[2,2] + (vcov2[22,22]*(120^2))+ (2*120*vcov2[2,22]))
+s9<- sqrt(vcov2[2,2] + (vcov2[22,22]*(140^2))+ (2*140*vcov2[2,22]))
+s10<- sqrt(vcov2[2,2] + (vcov2[22,22]*(160^2))+ (2*160*vcov2[2,22]))
+s11<- sqrt(vcov2[2,2] + (vcov2[22,22]*(180^2))+ (2*180*vcov2[2,22]))
+s12<- sqrt(vcov2[2,2] + (vcov2[22,22]*(200^2))+ (2*200*vcov2[2,22]))
+#Combine
+vcov<-cbind(s1,s2,s3,s4,s5,s6,s7,s8,s9,s10,s11,s12)
+
+vcov<-as.data.table(vcov)
+
+#Calculate b for the 10th and 90th % of the modifier
+vcov<-cbind(s1,s2,s3,s4,s5,s6,s7,s8,s9,s10,s11,s12)
+vcov<-as.data.table(vcov)
+
+#Calculate b for the 10th and 90th % of the modifier
+results2$beta1= exposure$Estimate + 1*results2$Estimate
+results2$beta2= exposure$Estimate + 15*results2$Estimate
+results2$beta3= exposure$Estimate + 30*results2$Estimate
+results2$beta4= exposure$Estimate + 50*results2$Estimate
+results2$beta5= exposure$Estimate + 70*results2$Estimate
+results2$beta6= exposure$Estimate + 90*results2$Estimate
+results2$beta7= exposure$Estimate + 100*results2$Estimate
+results2$beta8= exposure$Estimate + 120*results2$Estimate
+results2$beta9= exposure$Estimate + 140*results2$Estimate
+results2$beta10= exposure$Estimate + 160*results2$Estimate
+results2$beta11= exposure$Estimate + 180*results2$Estimate
+results2$beta12= exposure$Estimate + 200*results2$Estimate
+
+results2$OR1<-(exp(results2$beta1*iqrs[2])-1)*100
+results2$LCI1<-(exp((results2$beta1-1.96*vcov$s1)*iqrs[2])-1)*100
+results2$HCI1<-(exp((results2$beta1+1.96*vcov$s1)*iqrs[2])-1)*100
+
+results2$OR2<-(exp(results2$beta2*iqrs[2])-1)*100
+results2$LCI2<-(exp((results2$beta2-1.96*vcov$s2)*iqrs[2])-1)*100
+results2$HCI2<-(exp((results2$beta2+1.96*vcov$s2)*iqrs[2])-1)*100
+
+results2$OR3<-(exp(results2$beta3*iqrs[2])-1)*100
+results2$LCI3<-(exp((results2$beta3-1.96*vcov$s3)*iqrs[2])-1)*100
+results2$HCI3<-(exp((results2$beta3+1.96*vcov$s3)*iqrs[2])-1)*100
+
+results2$OR4<-(exp(results2$beta4*iqrs[2])-1)*100
+results2$LCI4<-(exp((results2$beta4-1.96*vcov$s4)*iqrs[2])-1)*100
+results2$HCI4<-(exp((results2$beta4+1.96*vcov$s4)*iqrs[2])-1)*100
+
+results2$OR5<-(exp(results2$beta5*iqrs[2])-1)*100
+results2$LCI5<-(exp((results2$beta5-1.96*vcov$s5)*iqrs[2])-1)*100
+results2$HCI5<-(exp((results2$beta5+1.96*vcov$s5)*iqrs[2])-1)*100
+
+results2$OR6<-(exp(results2$beta6*iqrs[2])-1)*100
+results2$LCI6<-(exp((results2$beta6-1.96*vcov$s6)*iqrs[2])-1)*100
+results2$HCI6<-(exp((results2$beta6+1.96*vcov$s6)*iqrs[2])-1)*100
+
+results2$OR7<-(exp(results2$beta7*iqrs[2])-1)*100
+results2$LCI7<-(exp((results2$beta7-1.96*vcov$s7)*iqrs[2])-1)*100
+results2$HCI7<-(exp((results2$beta7+1.96*vcov$s7)*iqrs[2])-1)*100
+
+results2$OR8<-(exp(results2$beta8*iqrs[2])-1)*100
+results2$LCI8<-(exp((results2$beta8-1.96*vcov$s8)*iqrs[2])-1)*100
+results2$HCI8<-(exp((results2$beta8+1.96*vcov$s8)*iqrs[2])-1)*100
+
+results2$OR9<-(exp(results2$beta9*iqrs[2])-1)*100
+results2$LCI9<-(exp((results2$beta9-1.96*vcov$s9)*iqrs[2])-1)*100
+results2$HCI9<-(exp((results2$beta9+1.96*vcov$s9)*iqrs[2])-1)*100
+
+results2$OR10<-(exp(results2$beta10*iqrs[2])-1)*100
+results2$LCI10<-(exp((results2$beta10-1.96*vcov$s10)*iqrs[2])-1)*100
+results2$HCI10<-(exp((results2$beta10+1.96*vcov$s10)*iqrs[2])-1)*100
+
+results2$OR11<-(exp(results2$beta11*iqrs[2])-1)*100
+results2$LCI11<-(exp((results2$beta11-1.96*vcov$s11)*iqrs[2])-1)*100
+results2$HCI11<-(exp((results2$beta11+1.96*vcov$s11)*iqrs[2])-1)*100
+
+results2$OR12<-(exp(results2$beta12*iqrs[2])-1)*100
+results2$LCI12<-(exp((results2$beta12-1.96*vcov$s12)*iqrs[2])-1)*100
+results2$HCI12<-(exp((results2$beta12+1.96*vcov$s12)*iqrs[2])-1)*100
+
+plot_data <- data.table(
+  y_value = y_values,  # Set the x-axis values (before *Estimate)
+  RR = c(results2$OR1, results2$OR2, results2$OR3, results2$OR4, results2$OR5, results2$OR6, results2$OR7, results2$OR8, results2$OR9, results2$OR10, results2$OR11,results2$OR12),
+  LCI = c(results2$LCI1, results2$LCI2, results2$LCI3, results2$LCI4, results2$LCI5, results2$LCI6,results2$LCI7, results2$LCI8, results2$LCI9, results2$LCI10, results2$LCI11, results2$LCI12),
+  HCI = c(results2$HCI1, results2$HCI2, results2$HCI3, results2$HCI4, results2$HCI5, results2$HCI6,results2$HCI7, results2$HCI8, results2$HCI9, results2$HCI10, results2$HCI11, results2$HCI12)
+)
+
+# Create the plot with custom x-axis values, updated title, and dashed line at y = 1
+x2=ggplot(plot_data, aes(x = y_value, y = RR)) +
+  geom_point(color = "blue", size = 3) +  # Plot the point for OR
+  geom_errorbar(aes(ymin = LCI, ymax = HCI), width = 0.2) +  # Add error bars for CI
+  geom_hline(yintercept = 0, linetype = "dashed", color = "red") +  # Add dashed line at y = 1
+  labs(x = "Total days", y = "RR (95% CI)", title = "Oil Combustion Sources") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),plot.title = element_text(size=10))  # Rotate x-axis labels for better readability
+```
+
+x3
+```{r}
+mod3= bam(log(glucose)~ X3_app*total_days_October_June+X1_app +X2_app+X4_app+X5_app+ mean_temp+ as.factor(work2) + age+s(year,bs='ps') +  as.factor(Race4) + as.factor(edu4)+ pct_black + MEDHH + pct_poverty+pct_NoHS+s(RunningID,bs='re')+as.factor(Gender),data=gluc_wtc)
+
+results2=summary(mod3)$p.table
+results2<-as.data.table(results2,keep.rownames = TRUE)[]
+results2$`p-value`<-format(round(results2$`Pr(>|t|)`,3),nsmall=3)
+exposure = subset(results2,rn=="X3_app")
+results2<-subset(results2,rn=="X3_app:total_days_October_June")
+
+#Get vcov
+vcov2<-vcov(mod3)
+
+s1=sqrt(vcov2[2,2] + (vcov2[22,22]*(1^2))+ (2*1*vcov2[2,22]))
+s2<- sqrt(vcov2[2,2] + (vcov2[22,22]*(15^2))+ (2*15*vcov2[2,22]))
+s3<- sqrt(vcov2[2,2] + (vcov2[22,22]*(30^2))+ (2*30*vcov2[2,22]))
+s4<- sqrt(vcov2[2,2] + (vcov2[22,22]*(50^2))+ (2*50*vcov2[2,22]))
+s5<- sqrt(vcov2[2,2] + (vcov2[22,22]*(70^2))+ (2*70*vcov2[2,22]))
+s6<- sqrt(vcov2[2,2] + (vcov2[22,22]*(90^2))+ (2*90*vcov2[2,22]))
+s7<- sqrt(vcov2[2,2] + (vcov2[22,22]*(100^2))+ (2*100*vcov2[2,22]))
+s8<- sqrt(vcov2[2,2] + (vcov2[22,22]*(120^2))+ (2*120*vcov2[2,22]))
+s9<- sqrt(vcov2[2,2] + (vcov2[22,22]*(140^2))+ (2*140*vcov2[2,22]))
+s10<- sqrt(vcov2[2,2] + (vcov2[22,22]*(160^2))+ (2*160*vcov2[2,22]))
+s11<- sqrt(vcov2[2,2] + (vcov2[22,22]*(180^2))+ (2*180*vcov2[2,22]))
+s12<- sqrt(vcov2[2,2] + (vcov2[22,22]*(200^2))+ (2*200*vcov2[2,22]))
+#Combine
+vcov<-cbind(s1,s2,s3,s4,s5,s6,s7,s8,s9,s10,s11,s12)
+
+vcov<-as.data.table(vcov)
+
+#Calculate b for the 10th and 90th % of the modifier
+vcov<-cbind(s1,s2,s3,s4,s5,s6,s7,s8,s9,s10,s11,s12)
+vcov<-as.data.table(vcov)
+
+#Calculate b for the 10th and 90th % of the modifier
+results2$beta1= exposure$Estimate + 1*results2$Estimate
+results2$beta2= exposure$Estimate + 15*results2$Estimate
+results2$beta3= exposure$Estimate + 30*results2$Estimate
+results2$beta4= exposure$Estimate + 50*results2$Estimate
+results2$beta5= exposure$Estimate + 70*results2$Estimate
+results2$beta6= exposure$Estimate + 90*results2$Estimate
+results2$beta7= exposure$Estimate + 100*results2$Estimate
+results2$beta8= exposure$Estimate + 120*results2$Estimate
+results2$beta9= exposure$Estimate + 140*results2$Estimate
+results2$beta10= exposure$Estimate + 160*results2$Estimate
+results2$beta11= exposure$Estimate + 180*results2$Estimate
+results2$beta12= exposure$Estimate + 200*results2$Estimate
+
+results2$OR1<-(exp(results2$beta1*iqrs[3])-1)*100
+results2$LCI1<-(exp((results2$beta1-1.96*vcov$s1)*iqrs[3])-1)*100
+results2$HCI1<-(exp((results2$beta1+1.96*vcov$s1)*iqrs[3])-1)*100
+
+results2$OR2<-(exp(results2$beta2*iqrs[3])-1)*100
+results2$LCI2<-(exp((results2$beta2-1.96*vcov$s2)*iqrs[3])-1)*100
+results2$HCI2<-(exp((results2$beta2+1.96*vcov$s2)*iqrs[3])-1)*100
+
+results2$OR3<-(exp(results2$beta3*iqrs[3])-1)*100
+results2$LCI3<-(exp((results2$beta3-1.96*vcov$s3)*iqrs[3])-1)*100
+results2$HCI3<-(exp((results2$beta3+1.96*vcov$s3)*iqrs[3])-1)*100
+
+results2$OR4<-(exp(results2$beta4*iqrs[3])-1)*100
+results2$LCI4<-(exp((results2$beta4-1.96*vcov$s4)*iqrs[3])-1)*100
+results2$HCI4<-(exp((results2$beta4+1.96*vcov$s4)*iqrs[3])-1)*100
+
+results2$OR5<-(exp(results2$beta5*iqrs[3])-1)*100
+results2$LCI5<-(exp((results2$beta5-1.96*vcov$s5)*iqrs[3])-1)*100
+results2$HCI5<-(exp((results2$beta5+1.96*vcov$s5)*iqrs[3])-1)*100
+
+results2$OR6<-(exp(results2$beta6*iqrs[3])-1)*100
+results2$LCI6<-(exp((results2$beta6-1.96*vcov$s6)*iqrs[3])-1)*100
+results2$HCI6<-(exp((results2$beta6+1.96*vcov$s6)*iqrs[3])-1)*100
+
+results2$OR7<-(exp(results2$beta7*iqrs[3])-1)*100
+results2$LCI7<-(exp((results2$beta7-1.96*vcov$s7)*iqrs[3])-1)*100
+results2$HCI7<-(exp((results2$beta7+1.96*vcov$s7)*iqrs[3])-1)*100
+
+results2$OR8<-(exp(results2$beta8*iqrs[3])-1)*100
+results2$LCI8<-(exp((results2$beta8-1.96*vcov$s8)*iqrs[3])-1)*100
+results2$HCI8<-(exp((results2$beta8+1.96*vcov$s8)*iqrs[3])-1)*100
+
+results2$OR9<-(exp(results2$beta9*iqrs[3])-1)*100
+results2$LCI9<-(exp((results2$beta9-1.96*vcov$s9)*iqrs[3])-1)*100
+results2$HCI9<-(exp((results2$beta9+1.96*vcov$s9)*iqrs[3])-1)*100
+
+results2$OR10<-(exp(results2$beta10*iqrs[3])-1)*100
+results2$LCI10<-(exp((results2$beta10-1.96*vcov$s10)*iqrs[3])-1)*100
+results2$HCI10<-(exp((results2$beta10+1.96*vcov$s10)*iqrs[3])-1)*100
+
+results2$OR11<-(exp(results2$beta11*iqrs[3])-1)*100
+results2$LCI11<-(exp((results2$beta11-1.96*vcov$s11)*iqrs[3])-1)*100
+results2$HCI11<-(exp((results2$beta11+1.96*vcov$s11)*iqrs[3])-1)*100
+
+results2$OR12<-(exp(results2$beta12*iqrs[3])-1)*100
+results2$LCI12<-(exp((results2$beta12-1.96*vcov$s12)*iqrs[3])-1)*100
+results2$HCI12<-(exp((results2$beta12+1.96*vcov$s12)*iqrs[3])-1)*100
+
+plot_data <- data.table(
+  y_value = y_values,  # Set the x-axis values (before *Estimate)
+  RR = c(results2$OR1, results2$OR2, results2$OR3, results2$OR4, results2$OR5, results2$OR6, results2$OR7, results2$OR8, results2$OR9, results2$OR10, results2$OR11,results2$OR12),
+  LCI = c(results2$LCI1, results2$LCI2, results2$LCI3, results2$LCI4, results2$LCI5, results2$LCI6,results2$LCI7, results2$LCI8, results2$LCI9, results2$LCI10, results2$LCI11, results2$LCI12),
+  HCI = c(results2$HCI1, results2$HCI2, results2$HCI3, results2$HCI4, results2$HCI5, results2$HCI6,results2$HCI7, results2$HCI8, results2$HCI9, results2$HCI10, results2$HCI11, results2$HCI12)
+)
+
+# Create the plot with custom x-axis values, updated title, and dashed line at y = 1
+x3=ggplot(plot_data, aes(x = y_value, y = RR)) +
+  geom_point(color = "blue", size = 3) +  # Plot the point for OR
+  geom_errorbar(aes(ymin = LCI, ymax = HCI), width = 0.2) +  # Add error bars for CI
+  geom_hline(yintercept = 0, linetype = "dashed", color = "red") +  # Add dashed line at y = 1
+  labs(x = "Total days", y = "RR (95% CI)", title = "Metal Industry Sources") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),plot.title = element_text(size=10))  # Rotate x-axis labels for better readability
+```
+
+x4
+```{r}
+mod4= bam(log(glucose)~ X4_app*total_days_October_June+X1_app +X2_app+X3_app+X5_app+ mean_temp+ as.factor(work2) + age+s(year,bs='ps') +  as.factor(Race4) + as.factor(edu4)+ pct_black + MEDHH + pct_poverty+pct_NoHS+s(RunningID,bs='re')+as.factor(Gender),data=gluc_wtc)
+
+results2=summary(mod4)$p.table
+results2<-as.data.table(results2,keep.rownames = TRUE)[]
+results2$`p-value`<-format(round(results2$`Pr(>|t|)`,3),nsmall=3)
+exposure = subset(results2,rn=="X4_app")
+results2<-subset(results2,rn=="X4_app:total_days_October_June")
+
+#Get vcov
+vcov2<-vcov(mod4)
+
+s1=sqrt(vcov2[2,2] + (vcov2[22,22]*(1^2))+ (2*1*vcov2[2,22]))
+s2<- sqrt(vcov2[2,2] + (vcov2[22,22]*(15^2))+ (2*15*vcov2[2,22]))
+s3<- sqrt(vcov2[2,2] + (vcov2[22,22]*(30^2))+ (2*30*vcov2[2,22]))
+s4<- sqrt(vcov2[2,2] + (vcov2[22,22]*(50^2))+ (2*50*vcov2[2,22]))
+s5<- sqrt(vcov2[2,2] + (vcov2[22,22]*(70^2))+ (2*70*vcov2[2,22]))
+s6<- sqrt(vcov2[2,2] + (vcov2[22,22]*(90^2))+ (2*90*vcov2[2,22]))
+s7<- sqrt(vcov2[2,2] + (vcov2[22,22]*(100^2))+ (2*100*vcov2[2,22]))
+s8<- sqrt(vcov2[2,2] + (vcov2[22,22]*(120^2))+ (2*120*vcov2[2,22]))
+s9<- sqrt(vcov2[2,2] + (vcov2[22,22]*(140^2))+ (2*140*vcov2[2,22]))
+s10<- sqrt(vcov2[2,2] + (vcov2[22,22]*(160^2))+ (2*160*vcov2[2,22]))
+s11<- sqrt(vcov2[2,2] + (vcov2[22,22]*(180^2))+ (2*180*vcov2[2,22]))
+s12<- sqrt(vcov2[2,2] + (vcov2[22,22]*(200^2))+ (2*200*vcov2[2,22]))
+#Combine
+vcov<-cbind(s1,s2,s3,s4,s5,s6,s7,s8,s9,s10,s11,s12)
+
+vcov<-as.data.table(vcov)
+
+#Calculate b for the 10th and 90th % of the modifier
+vcov<-cbind(s1,s2,s3,s4,s5,s6,s7,s8,s9,s10,s11,s12)
+vcov<-as.data.table(vcov)
+
+#Calculate b for the 10th and 90th % of the modifier
+results2$beta1= exposure$Estimate + 1*results2$Estimate
+results2$beta2= exposure$Estimate + 15*results2$Estimate
+results2$beta3= exposure$Estimate + 30*results2$Estimate
+results2$beta4= exposure$Estimate + 50*results2$Estimate
+results2$beta5= exposure$Estimate + 70*results2$Estimate
+results2$beta6= exposure$Estimate + 90*results2$Estimate
+results2$beta7= exposure$Estimate + 100*results2$Estimate
+results2$beta8= exposure$Estimate + 120*results2$Estimate
+results2$beta9= exposure$Estimate + 140*results2$Estimate
+results2$beta10= exposure$Estimate + 160*results2$Estimate
+results2$beta11= exposure$Estimate + 180*results2$Estimate
+results2$beta12= exposure$Estimate + 200*results2$Estimate
+
+results2$OR1<-(exp(results2$beta1*iqrs[4])-1)*100
+results2$LCI1<-(exp((results2$beta1-1.96*vcov$s1)*iqrs[4])-1)*100
+results2$HCI1<-(exp((results2$beta1+1.96*vcov$s1)*iqrs[4])-1)*100
+
+results2$OR2<-(exp(results2$beta2*iqrs[4])-1)*100
+results2$LCI2<-(exp((results2$beta2-1.96*vcov$s2)*iqrs[4])-1)*100
+results2$HCI2<-(exp((results2$beta2+1.96*vcov$s2)*iqrs[4])-1)*100
+
+results2$OR3<-(exp(results2$beta3*iqrs[4])-1)*100
+results2$LCI3<-(exp((results2$beta3-1.96*vcov$s3)*iqrs[4])-1)*100
+results2$HCI3<-(exp((results2$beta3+1.96*vcov$s3)*iqrs[4])-1)*100
+
+results2$OR4<-(exp(results2$beta4*iqrs[4])-1)*100
+results2$LCI4<-(exp((results2$beta4-1.96*vcov$s4)*iqrs[4])-1)*100
+results2$HCI4<-(exp((results2$beta4+1.96*vcov$s4)*iqrs[4])-1)*100
+
+results2$OR5<-(exp(results2$beta5*iqrs[4])-1)*100
+results2$LCI5<-(exp((results2$beta5-1.96*vcov$s5)*iqrs[4])-1)*100
+results2$HCI5<-(exp((results2$beta5+1.96*vcov$s5)*iqrs[4])-1)*100
+
+results2$OR6<-(exp(results2$beta6*iqrs[4])-1)*100
+results2$LCI6<-(exp((results2$beta6-1.96*vcov$s6)*iqrs[4])-1)*100
+results2$HCI6<-(exp((results2$beta6+1.96*vcov$s6)*iqrs[4])-1)*100
+
+results2$OR7<-(exp(results2$beta7*iqrs[4])-1)*100
+results2$LCI7<-(exp((results2$beta7-1.96*vcov$s7)*iqrs[4])-1)*100
+results2$HCI7<-(exp((results2$beta7+1.96*vcov$s7)*iqrs[4])-1)*100
+
+results2$OR8<-(exp(results2$beta8*iqrs[4])-1)*100
+results2$LCI8<-(exp((results2$beta8-1.96*vcov$s8)*iqrs[4])-1)*100
+results2$HCI8<-(exp((results2$beta8+1.96*vcov$s8)*iqrs[4])-1)*100
+
+results2$OR9<-(exp(results2$beta9*iqrs[4])-1)*100
+results2$LCI9<-(exp((results2$beta9-1.96*vcov$s9)*iqrs[4])-1)*100
+results2$HCI9<-(exp((results2$beta9+1.96*vcov$s9)*iqrs[4])-1)*100
+
+results2$OR10<-(exp(results2$beta10*iqrs[4])-1)*100
+results2$LCI10<-(exp((results2$beta10-1.96*vcov$s10)*iqrs[4])-1)*100
+results2$HCI10<-(exp((results2$beta10+1.96*vcov$s10)*iqrs[4])-1)*100
+
+results2$OR11<-(exp(results2$beta11*iqrs[4])-1)*100
+results2$LCI11<-(exp((results2$beta11-1.96*vcov$s11)*iqrs[4])-1)*100
+results2$HCI11<-(exp((results2$beta11+1.96*vcov$s11)*iqrs[4])-1)*100
+
+results2$OR12<-(exp(results2$beta12*iqrs[4])-1)*100
+results2$LCI12<-(exp((results2$beta12-1.96*vcov$s12)*iqrs[4])-1)*100
+results2$HCI12<-(exp((results2$beta12+1.96*vcov$s12)*iqrs[4])-1)*100
+
+plot_data <- data.table(
+  y_value = y_values,  # Set the x-axis values (before *Estimate)
+  RR = c(results2$OR1, results2$OR2, results2$OR3, results2$OR4, results2$OR5, results2$OR6, results2$OR7, results2$OR8, results2$OR9, results2$OR10, results2$OR11,results2$OR12),
+  LCI = c(results2$LCI1, results2$LCI2, results2$LCI3, results2$LCI4, results2$LCI5, results2$LCI6,results2$LCI7, results2$LCI8, results2$LCI9, results2$LCI10, results2$LCI11, results2$LCI12),
+  HCI = c(results2$HCI1, results2$HCI2, results2$HCI3, results2$HCI4, results2$HCI5, results2$HCI6,results2$HCI7, results2$HCI8, results2$HCI9, results2$HCI10, results2$HCI11, results2$HCI12)
+)
+
+# Create the plot with custom x-axis values, updated title, and dashed line at y = 1
+x4=ggplot(plot_data, aes(x = y_value, y = RR)) +
+  geom_point(color = "blue", size = 3) +  # Plot the point for OR
+  geom_errorbar(aes(ymin = LCI, ymax = HCI), width = 0.2) +  # Add error bars for CI
+  geom_hline(yintercept = 0, linetype = "dashed", color = "red") +  # Add dashed line at y = 1
+  labs(x = "Total days", y = "RR (95% CI)", title = "Industry Sources") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),plot.title = element_text(size=10))  # Rotate x-axis labels for better readability
+```
+
+x5
+```{r}
+mod5= bam(log(glucose)~ X5_app*total_days_October_June+X1_app +X2_app+X3_app+X4_app+ mean_temp+ as.factor(work2) + age+s(year,bs='ps') +  as.factor(Race4) + as.factor(edu4)+ pct_black + MEDHH + pct_poverty+pct_NoHS+s(RunningID,bs='re')+as.factor(Gender),data=gluc_wtc)
+
+results2=summary(mod5)$p.table
+results2<-as.data.table(results2,keep.rownames = TRUE)[]
+results2$`p-value`<-format(round(results2$`Pr(>|t|)`,3),nsmall=3)
+exposure = subset(results2,rn=="X5_app")
+results2<-subset(results2,rn=="X5_app:total_days_October_June")
+
+#Get vcov
+vcov2<-vcov(mod5)
+
+s1=sqrt(vcov2[2,2] + (vcov2[22,22]*(1^2))+ (2*1*vcov2[2,22]))
+s2<- sqrt(vcov2[2,2] + (vcov2[22,22]*(15^2))+ (2*15*vcov2[2,22]))
+s3<- sqrt(vcov2[2,2] + (vcov2[22,22]*(30^2))+ (2*30*vcov2[2,22]))
+s4<- sqrt(vcov2[2,2] + (vcov2[22,22]*(50^2))+ (2*50*vcov2[2,22]))
+s5<- sqrt(vcov2[2,2] + (vcov2[22,22]*(70^2))+ (2*70*vcov2[2,22]))
+s6<- sqrt(vcov2[2,2] + (vcov2[22,22]*(90^2))+ (2*90*vcov2[2,22]))
+s7<- sqrt(vcov2[2,2] + (vcov2[22,22]*(100^2))+ (2*100*vcov2[2,22]))
+s8<- sqrt(vcov2[2,2] + (vcov2[22,22]*(120^2))+ (2*120*vcov2[2,22]))
+s9<- sqrt(vcov2[2,2] + (vcov2[22,22]*(140^2))+ (2*140*vcov2[2,22]))
+s10<- sqrt(vcov2[2,2] + (vcov2[22,22]*(160^2))+ (2*160*vcov2[2,22]))
+s11<- sqrt(vcov2[2,2] + (vcov2[22,22]*(180^2))+ (2*180*vcov2[2,22]))
+s12<- sqrt(vcov2[2,2] + (vcov2[22,22]*(200^2))+ (2*200*vcov2[2,22]))
+#Combine
+vcov<-cbind(s1,s2,s3,s4,s5,s6,s7,s8,s9,s10,s11,s12)
+
+vcov<-as.data.table(vcov)
+
+#Calculate b for the 10th and 90th % of the modifier
+vcov<-cbind(s1,s2,s3,s4,s5,s6,s7,s8,s9,s10,s11,s12)
+vcov<-as.data.table(vcov)
+
+#Calculate b for the 10th and 90th % of the modifier
+results2$beta1= exposure$Estimate + 1*results2$Estimate
+results2$beta2= exposure$Estimate + 15*results2$Estimate
+results2$beta3= exposure$Estimate + 30*results2$Estimate
+results2$beta4= exposure$Estimate + 50*results2$Estimate
+results2$beta5= exposure$Estimate + 70*results2$Estimate
+results2$beta6= exposure$Estimate + 90*results2$Estimate
+results2$beta7= exposure$Estimate + 100*results2$Estimate
+results2$beta8= exposure$Estimate + 120*results2$Estimate
+results2$beta9= exposure$Estimate + 140*results2$Estimate
+results2$beta10= exposure$Estimate + 160*results2$Estimate
+results2$beta11= exposure$Estimate + 180*results2$Estimate
+results2$beta12= exposure$Estimate + 200*results2$Estimate
+
+results2$OR1<-(exp(results2$beta1*iqrs[4])-1)*100
+results2$LCI1<-(exp((results2$beta1-1.96*vcov$s1)*iqrs[4])-1)*100
+results2$HCI1<-(exp((results2$beta1+1.96*vcov$s1)*iqrs[4])-1)*100
+
+results2$OR2<-(exp(results2$beta2*iqrs[5])-1)*100
+results2$LCI2<-(exp((results2$beta2-1.96*vcov$s2)*iqrs[5])-1)*100
+results2$HCI2<-(exp((results2$beta2+1.96*vcov$s2)*iqrs[5])-1)*100
+
+results2$OR3<-(exp(results2$beta3*iqrs[5])-1)*100
+results2$LCI3<-(exp((results2$beta3-1.96*vcov$s3)*iqrs[5])-1)*100
+results2$HCI3<-(exp((results2$beta3+1.96*vcov$s3)*iqrs[5])-1)*100
+
+results2$OR4<-(exp(results2$beta4*iqrs[5])-1)*100
+results2$LCI4<-(exp((results2$beta4-1.96*vcov$s4)*iqrs[5])-1)*100
+results2$HCI4<-(exp((results2$beta4+1.96*vcov$s4)*iqrs[5])-1)*100
+
+results2$OR5<-(exp(results2$beta5*iqrs[5])-1)*100
+results2$LCI5<-(exp((results2$beta5-1.96*vcov$s5)*iqrs[5])-1)*100
+results2$HCI5<-(exp((results2$beta5+1.96*vcov$s5)*iqrs[5])-1)*100
+
+results2$OR6<-(exp(results2$beta6*iqrs[5])-1)*100
+results2$LCI6<-(exp((results2$beta6-1.96*vcov$s6)*iqrs[5])-1)*100
+results2$HCI6<-(exp((results2$beta6+1.96*vcov$s6)*iqrs[5])-1)*100
+
+results2$OR7<-(exp(results2$beta7*iqrs[5])-1)*100
+results2$LCI7<-(exp((results2$beta7-1.96*vcov$s7)*iqrs[5])-1)*100
+results2$HCI7<-(exp((results2$beta7+1.96*vcov$s7)*iqrs[5])-1)*100
+
+results2$OR8<-(exp(results2$beta8*iqrs[5])-1)*100
+results2$LCI8<-(exp((results2$beta8-1.96*vcov$s8)*iqrs[5])-1)*100
+results2$HCI8<-(exp((results2$beta8+1.96*vcov$s8)*iqrs[5])-1)*100
+
+results2$OR9<-(exp(results2$beta9*iqrs[5])-1)*100
+results2$LCI9<-(exp((results2$beta9-1.96*vcov$s9)*iqrs[5])-1)*100
+results2$HCI9<-(exp((results2$beta9+1.96*vcov$s9)*iqrs[5])-1)*100
+
+results2$OR10<-(exp(results2$beta10*iqrs[5])-1)*100
+results2$LCI10<-(exp((results2$beta10-1.96*vcov$s10)*iqrs[5])-1)*100
+results2$HCI10<-(exp((results2$beta10+1.96*vcov$s10)*iqrs[5])-1)*100
+
+results2$OR11<-(exp(results2$beta11*iqrs[5])-1)*100
+results2$LCI11<-(exp((results2$beta11-1.96*vcov$s11)*iqrs[5])-1)*100
+results2$HCI11<-(exp((results2$beta11+1.96*vcov$s11)*iqrs[5])-1)*100
+
+results2$OR12<-(exp(results2$beta12*iqrs[5])-1)*100
+results2$LCI12<-(exp((results2$beta12-1.96*vcov$s12)*iqrs[5])-1)*100
+results2$HCI12<-(exp((results2$beta12+1.96*vcov$s12)*iqrs[5])-1)*100
+
+plot_data <- data.table(
+  y_value = y_values,  # Set the x-axis values (before *Estimate)
+  RR = c(results2$OR1, results2$OR2, results2$OR3, results2$OR4, results2$OR5, results2$OR6, results2$OR7, results2$OR8, results2$OR9, results2$OR10, results2$OR11,results2$OR12),
+  LCI = c(results2$LCI1, results2$LCI2, results2$LCI3, results2$LCI4, results2$LCI5, results2$LCI6,results2$LCI7, results2$LCI8, results2$LCI9, results2$LCI10, results2$LCI11, results2$LCI12),
+  HCI = c(results2$HCI1, results2$HCI2, results2$HCI3, results2$HCI4, results2$HCI5, results2$HCI6,results2$HCI7, results2$HCI8, results2$HCI9, results2$HCI10, results2$HCI11, results2$HCI12)
+)
+
+# Create the plot with custom x-axis values, updated title, and dashed line at y = 1
+x5=ggplot(plot_data, aes(x = y_value, y = RR)) +
+  geom_point(color = "blue", size = 3) +  # Plot the point for OR
+  geom_errorbar(aes(ymin = LCI, ymax = HCI), width = 0.2) +  # Add error bars for CI
+  geom_hline(yintercept = 0, linetype = "dashed", color = "red") +  # Add dashed line at y = 1
+  labs(x = "Total days", y = "RR (95% CI)", title = "MVRD Sources") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),plot.title = element_text(size=10))  # Rotate x-axis labels for better readability
+```
+
+```{r}
+tiff("C:/Users/furmah01/OneDrive - The Mount Sinai Hospital/WTC new data 2022/Helena -aim 2/For paper/Diab_interaction.tiff", units="in", width=6, height=5, res=300)
+
+library(gridExtra)
+grid.arrange(pm, x1,x2,x3,x4,x5, nrow = 2)
+
+dev.off()
+```

@@ -1,0 +1,727 @@
+---
+title: "Glucose and Diab"
+author: "Helena Furman"
+date: "2025-02-07"
+output: html_document
+---
+
+```{r include=FALSE}
+library(dplyr)
+library(tidyr)
+library(sf)
+library(sp)
+library(data.table)
+library(readxl)
+library(mgcv)
+library(corrplot)
+library(tidyverse)
+library(tableone)
+library(table1)
+```
+
+
+# working directory for each person working on the code
+```{r}
+helena = "C:/Users/furmah01/OneDrive - The Mount Sinai Hospital"
+maayan= "C:/Users/yitshm01/OneDrive - The Mount Sinai Hospital/Maayans lab/Pablo"
+wd=helena
+```
+
+# Descriptive prep
+```{r}
+# change decimal point in table
+my.render.cont <- function(x) {
+    with(stats.default(x), 
+         c("",
+          "Mean (SD)" = sprintf("%s (%s)",
+                                round_pad(MEAN, 2),
+                                round_pad(SD, 2))))
+}
+
+my.render.cat <- function(x) { 
+  sub('.', '.', c("", sapply(stats.default(x), 
+  function(y) with(y, sprintf("%d (%0.2f %%)", FREQ, PCT)))), fixed = TRUE) 
+}
+```
+
+1. Diabetes database
+```{r}
+data = readRDS(paste0(wd, "/WTC new data 2022/Helena -aim 2/generated files/self reported outcomes/diabHTNcad_for_analysis.rds")) %>%
+  mutate(year = as.integer(year))
+```
+
+# assign diab for people with two lab results > 200
+```{r}
+# Identify individuals with 2 or more values above 200
+diab <- data %>%
+  group_by(ExtractID) %>%
+  filter(glucose >= 200) %>%
+  dplyr::summarise(count_above_200 = n(), first_year = min(year)) %>%
+  filter(count_above_200 >= 2) 
+# Merge with original data and create sick column
+diab2 <- data %>%
+  left_join(diab, by = "ExtractID") %>%
+  mutate(diab_diag2 = ifelse(!is.na(first_year) & year >= first_year, "1", "0"))
+
+diab2 <- diab2 %>%
+  group_by(ExtractID) %>%
+  filter(!(diab_diag2 == "1" & year > first(first_year))) %>%
+  ungroup()
+
+diab2$diab_diag3 = ifelse(diab2$diab_diag == 1,1,diab2$diab_diag2)
+diab2$diab_diag3=as.numeric(diab2$diab_diag3)
+```
+
+```{r}
+# create min diab year or fisrt year
+diab2$case = pmin(diab2$diab_year, diab2$first_year, na.rm = TRUE)
+
+df_diab <- diab2 %>%
+  filter((case >= 2003 | is.na(case)) & (year <= case | is.na(case)))
+
+df_diab=subset(df_diab,year>=2003 & year<=2019)
+
+rm(data,diab,diab2)
+```
+
+# check num of people with diab
+```{r}
+a = sum(df_diab$diab_diag3)
+a
+a*100/length(unique(df_diab$ExtractID))
+```
+
+## table 1: population characteristics - all during first visit (cohort enrolment)
+```{r}
+m2 <-df_diab %>% group_by(ExtractID) %>% filter(Visit_Number==1)
+
+m2$outcome = 'Descriptive Statistics'
+
+table1(~ age + as.factor(Race4) + as.factor(edu4) + as.factor(Gender) +  pct_black + MEDHH + pct_poverty + pct_NoHS | outcome, data=m2,overall=F,render.continuous=my.render.cont, render.categorical=my.render.cat)
+
+sd(m2$pct_black, na.rm = TRUE)
+sd(m2$pct_poverty, na.rm = TRUE)
+sd(m2$pct_NoHS, na.rm = TRUE)
+```
+
+# population characteristics - people without glucose values
+```{r}
+m2 = subset(data, is.na(glucose))
+m2 <-m2 %>% group_by(ExtractID) %>% filter(Visit_Number==1)
+
+m2$outcome = 'Descriptive Statistics'
+
+table1(~ age + as.factor(Race4) + as.factor(edu4) + as.factor(Gender) + pct_black + MEDHH + pct_poverty + pct_NoHS | outcome, data=m2,overall=F,render.continuous=my.render.cont, render.categorical=my.render.cat)
+
+mean(m2$pct_black, na.rm = TRUE)
+mean(m2$pct_poverty, na.rm = TRUE)
+mean(m2$pct_NoHS, na.rm = TRUE)
+```
+
+# table 2: exposures
+```{r}
+# Select variables and define the categorical ones
+listVars <- c('pm','mean_temp' ,"X1_app", "X2_app", "X3_app", "X4_app", "X5_app","glucose")
+
+# Diab
+table2 <- CreateTableOne(vars = listVars, data = df_diab, includeNA = TRUE)
+table2 <- print(table2)
+```
+
+# Supplementary Figure 1. correlations
+```{r}
+library(corrplot)
+
+corr_mix = c('pm','mean_temp',"X1_app", "X2_app", "X3_app", "X4_app", "X5_app")
+
+df_corr = subset(df_diab, select = (corr_mix))
+
+output_file_path <- "C:/Users/furmah01/OneDrive - The Mount Sinai Hospital/WTC new data 2022/Helena -aim 2/Glucose and Diab/american journal of epidemiology/After Review/to send/Final/Figure S1.tiff"
+
+#png(filename = output_file_path, width = 900, height = 800)
+
+tiff(output_file_path, width = 6, height = 6, units = "in", res = 300)
+
+
+# Rename the columns
+names(df_corr) <- c('$PM[2.5]','Mean Temperature',"Biomass Burning","Oil Combustion",
+                    "Metal Industry", "Other Industry",'MVRD')
+
+# Calculate the correlation matrix
+cor_mat <- cor(df_corr, use = "complete.obs")
+
+# Generate the corrplot without the diagonal
+corrplot(cor_mat, type = "upper", method = 'circle', is.corr = TRUE, 
+         addCoef.col = "black", diag = FALSE)
+
+dev.off()
+
+```
+
+# vaiables to iqr
+```{r}
+variables <- c('X1_app',"X2_app", "X3_app", "X4_app", "X5_app")
+iqrs <- sapply(variables, function(var) IQR(df_diab[[var]], na.rm = TRUE))
+
+var2 <- c('pm')
+iqrs2 <- sapply(var2, function(var) IQR(df_diab[[var]], na.rm = TRUE))
+```
+
+2. WTC exposures
+```{r}
+wtc_data<-readRDS(paste0(wd,'/WTC new data 2022/processed files/Aim2-Helena/long_term_preapred_full_data_2024-11-22.rds'))
+
+wtc_data = subset(wtc_data, select = c(ExtractID,Total_hours911_930 , total_days_October_June , injury,Lower_Manhattan911_code,lost, exp911_imp, horror,work))
+
+
+wtc_data$work2 = ifelse(wtc_data$work == 1,1,0)
+```
+
+#https://pmc.ncbi.nlm.nih.gov/articles/PMC8215565/
+# Employment in protective services
+Protective Services/Military',1,
+Construction Occupations',2,
+Telecom & Other Installation & Repair',3,
+Transportation & Material Moving Occupations',4,
+'UNEMPLOYED/RETIRED',5,
+'OTHER JOBS',6,
+'UNKNOWN',7,NA
+
+```{r}
+wtc <-wtc_data %>% group_by(ExtractID) %>% slice(1)
+rm(wtc_data)
+```
+
+3. Glucose database
+```{r}
+data = readRDS(paste0(wd,"/WTC new data 2022/Helena -aim 2/generated files/Biomarker analysis/biomarkers_for_analysis4.rds"))
+data=data[complete.cases(data$glucose),]
+data=subset(data,year >=2003 & year<=2019)
+```
+
+# merge with WTC with diab data for the iqr and later analysis
+```{r}
+#Diabetes
+diab_wtc = merge(df_diab, wtc, by="ExtractID", all.x=TRUE)
+
+#glucose
+gluc_wtc = merge(data, wtc, by="ExtractID", all.x=TRUE)
+
+rm(df_diab,data,wtc)
+```
+
+
+# Glucose analysis no IPW table 3
+```{r}
+#Create a numeric ID
+gluc_wtc <- gluc_wtc %>%
+  mutate(RunningID = dense_rank(ExtractID))
+```
+
+```{r}
+# remove extreem
+gluc_wtc = subset(gluc_wtc, glucose<=600 & glucose>=50)
+```
+
+glucose
+needs to be log transformed because residuals (gam.check) are not normal
+```{r}
+# Sources
+nmf_glucose <- bam(log(glucose)~ X1_app +X2_app+X3_app+X4_app+X5_app+ mean_temp +as.factor(work2)+Total_hours911_930+age+ s(year,bs='ps') + as.factor(Gender) + as.factor(Race4) + as.factor(edu4)+ pct_black + MEDHH + pct_poverty+pct_NoHS+s(RunningID,bs='re'),data=gluc_wtc)
+
+    nmf=summary(nmf_glucose)$p.table
+    nmf<-as.data.frame(nmf,keep.rownames = TRUE)[] # Format as datatable
+    table_nmf=nmf[2:6,]
+    
+    # get upper and lower bound
+    table_nmf$lower = table_nmf$Estimate - qnorm(0.975) * table_nmf$`Std. Error`
+    table_nmf$upper = table_nmf$Estimate + qnorm(0.975) * table_nmf$`Std. Error`
+    
+    # exponentiate estimate and bounds
+    table_nmf$Estimate_exp <- exp(table_nmf$Estimate*iqrs)
+    table_nmf$lower_exp <- exp(table_nmf$lower*iqrs)
+    table_nmf$upper_exp <- exp(table_nmf$upper*iqrs)
+    table_nmf = table_nmf[,-c(1:3,5:6) ]
+
+# PM 
+pm_glucose <- bam(log(glucose)~ pm + mean_temp +as.factor(work2)+Total_hours911_930+ age+s(year,bs='ps') + as.factor(Gender) + as.factor(Race4) + as.factor(edu4)+ pct_black + MEDHH + pct_poverty+pct_NoHS+s(RunningID,bs='re'),data=gluc_wtc)
+
+    pm=summary(pm_glucose)$p.table
+    pm<-as.data.frame(pm,keep.rownames = TRUE)[] # Format as datatable
+    table_pm=pm[2,]
+    
+    # get upper and lower bound
+    table_pm$lower = table_pm$Estimate - qnorm(0.975) * table_pm$`Std. Error`
+    table_pm$upper = table_pm$Estimate + qnorm(0.975) * table_pm$`Std. Error`
+    
+    # exponentiate estimate and bounds - becuase family is not gaussian
+    table_pm$Estimate_exp <- exp(table_pm$Estimate*iqrs2)
+    table_pm$lower_exp <- exp(table_pm$lower*iqrs2)
+    table_pm$upper_exp <- exp(table_pm$upper*iqrs2)
+    table_pm = table_pm[,-c(1:3,5:6) ]
+    
+#% change
+a = rbind(table_pm,table_nmf)
+
+a$Estimate_exp2 <- (a$Estimate_exp - 1) * 100
+a$lower_exp2 <- (a$lower_exp - 1) * 100
+a$upper_exp2 <- (a$upper_exp - 1) * 100
+
+
+  # Round values 
+  a$Estimate_exp2 <- round(a$Estimate_exp2, 2)
+  a$lower_exp2 <- round(a$lower_exp2, 2)
+  a$upper_exp2 <- round(a$upper_exp2, 2)
+  
+    # add significance
+  a$sig <- ifelse(a$`Pr(>|t|)` < 0.001, "***",
+                    ifelse(a$`Pr(>|t|)` < 0.01, "**",
+                           ifelse(a$`Pr(>|t|)` < 0.05, "*",
+                                  ifelse(a$`Pr(>|t|)` < 0.1, ".",""))))
+  a[,-c(1:4) ]
+```
+
+
+# Interaction with sex table S1
+```{r}
+mod <- bam(log(glucose)~ pm*as.factor(Gender) + mean_temp +as.factor(work2)+Total_hours911_930+age+ s(year,bs='ps')  + as.factor(Race4) + as.factor(edu4)+ pct_black + MEDHH + pct_poverty+pct_NoHS+s(RunningID,bs='re'),data=gluc_wtc)
+smod=summary(mod)$p.table
+smod=smod[nrow(smod), , drop = FALSE]
+
+mod1 <- bam(log(glucose)~ X1_app*as.factor(Gender) +X2_app+X3_app+X4_app+X5_app+ mean_temp+as.factor(work2)+Total_hours911_930 +age+ s(year,bs='ps') + as.factor(Race4) + as.factor(edu4)+ pct_black + MEDHH + pct_poverty+pct_NoHS+s(RunningID,bs='re'),data=gluc_wtc)
+smod1=summary(mod1)$p.table
+smod1=smod1[nrow(smod1), , drop = FALSE]
+
+mod2 <- bam(log(glucose)~ X1_app+X2_app*as.factor(Gender) +X3_app+X4_app+X5_app+ mean_temp +as.factor(work2)+Total_hours911_930+age+ s(year,bs='ps') +  as.factor(Race4) + as.factor(edu4)+ pct_black + MEDHH + pct_poverty+pct_NoHS+s(RunningID,bs='re'),data=gluc_wtc)
+smod2=summary(mod2)$p.table
+smod2=smod2[nrow(smod2), , drop = FALSE]
+
+mod3 <- bam(log(glucose)~ X1_app +X2_app+X3_app*as.factor(Gender)+X4_app+X5_app+ mean_temp +as.factor(work2)+Total_hours911_930+age+ s(year,bs='ps') +  as.factor(Race4) + as.factor(edu4)+ pct_black + MEDHH + pct_poverty+pct_NoHS+s(RunningID,bs='re'),data=gluc_wtc)
+smod3=summary(mod3)$p.table
+smod3=smod3[nrow(smod3), , drop = FALSE]
+
+mod4 <- bam(log(glucose)~ X1_app +X2_app+X3_app+X4_app*as.factor(Gender)+X5_app+ mean_temp+as.factor(work2)+Total_hours911_930 +age+ s(year,bs='ps') +as.factor(Race4) + as.factor(edu4)+ pct_black + MEDHH + pct_poverty+pct_NoHS+s(RunningID,bs='re'),data=gluc_wtc)
+smod4=summary(mod4)$p.table
+smod4=smod4[nrow(smod4), , drop = FALSE]
+
+mod5 <- bam(log(glucose)~ X1_app +X2_app+X3_app+X4_app+X5_app*as.factor(Gender)+ mean_temp +as.factor(work2)+Total_hours911_930+age+ s(year,bs='ps') +  as.factor(Race4) + as.factor(edu4)+ pct_black + MEDHH + pct_poverty+pct_NoHS+s(RunningID,bs='re'),data=gluc_wtc)
+smod5=summary(mod5)$p.table
+smod5=smod5[nrow(smod5), , drop = FALSE]
+```
+
+```{r}
+# to get the other estimates change the mod (line 221) and the IQR (line 228-230)
+dust=rbind(smod,smod1,smod2,smod3,smod4,smod5)
+dust<-as.data.frame(dust,keep.rownames = TRUE)[] # Format as datatable
+dust=subset(dust,select=`Pr(>|t|)`)
+dust$`Pr(>|t|)` <- round(dust$`Pr(>|t|)`, 3)
+```
+
+# stratify by sex 
+```{r}
+male = subset(gluc_wtc,Gender==0)
+female = subset(gluc_wtc,Gender==1)
+```
+
+# male
+```{r}
+# model of PM and temp, use gluc, pm per iqr
+pm_glucose <- bam(log(glucose)~ pm + mean_temp +as.factor(work2)+Total_hours911_930+ s(year,bs='ps') +  age+as.factor(Race4) + as.factor(edu4)+ pct_black + MEDHH + pct_poverty+pct_NoHS+s(RunningID,bs='re'),data=male)
+
+    pm=summary(pm_glucose)$p.table
+    pm<-as.data.frame(pm,keep.rownames = TRUE)[] # Format as datatable
+    table_pm=pm[2,]
+
+        # get upper and lower bound
+    table_pm$lower = table_pm$Estimate - qnorm(0.975) * table_pm$`Std. Error`
+    table_pm$upper = table_pm$Estimate + qnorm(0.975) * table_pm$`Std. Error`
+    
+    # exponentiate estimate and bounds
+    table_pm$Estimate_exp <- (exp(table_pm$Estimate*iqrs2)-1)*100
+    table_pm$lower_exp <- (exp(table_pm$lower*iqrs2)-1)*100
+    table_pm$upper_exp <- (exp(table_pm$upper*iqrs2)-1)*100
+    table_pm = table_pm[,-c(1:3,5:6) ]
+# Sources
+nmf_glucose <- bam(log(glucose)~ X1_app +X2_app+X3_app+X4_app+X5_app+ mean_temp+as.factor(work2)+Total_hours911_930 +age+ s(year,bs='ps') +  as.factor(Race4) + as.factor(edu4)+ pct_black + MEDHH + pct_poverty+pct_NoHS+s(RunningID,bs='re'),data=male)
+
+    nmf=summary(nmf_glucose)$p.table
+    nmf<-as.data.frame(nmf,keep.rownames = TRUE)[] # Format as datatable
+    table_nmf=nmf[2:6,]
+
+
+    # get upper and lower bound
+    table_nmf$lower = table_nmf$Estimate - qnorm(0.975) * table_nmf$`Std. Error`
+    table_nmf$upper = table_nmf$Estimate + qnorm(0.975) * table_nmf$`Std. Error`
+    
+    # exponentiate estimate and bounds
+    table_nmf$Estimate_exp <- (exp(table_nmf$Estimate*iqrs)-1)*100
+    table_nmf$lower_exp <- (exp(table_nmf$lower*iqrs)-1)*100
+    table_nmf$upper_exp <- (exp(table_nmf$upper*iqrs)-1)*100
+    table_nmf = table_nmf[,-c(1:3,5:6) ]
+
+    #Combine
+a=rbind(table_pm,table_nmf)
+a$exposure <- rownames(a)
+a$outcome='Men'
+```
+
+# female
+```{r}
+# model of PM and temp, use gluc, pm per iqr
+pm_glucose <- bam(log(glucose)~ pm + mean_temp + s(year,bs='ps') +as.factor(work2)+Total_hours911_930+  age+as.factor(Race4) + as.factor(edu4)+ pct_black + MEDHH + pct_poverty+pct_NoHS+s(RunningID,bs='re'),data=female)
+
+    pm=summary(pm_glucose)$p.table
+    pm<-as.data.frame(pm,keep.rownames = TRUE)[] # Format as datatable
+    table_pm=pm[2,]
+
+        # get upper and lower bound
+    table_pm$lower = table_pm$Estimate - qnorm(0.975) * table_pm$`Std. Error`
+    table_pm$upper = table_pm$Estimate + qnorm(0.975) * table_pm$`Std. Error`
+    
+    # exponentiate estimate and bounds
+    table_pm$Estimate_exp <- (exp(table_pm$Estimate*iqrs2)-1)*100
+    table_pm$lower_exp <- (exp(table_pm$lower*iqrs2)-1)*100
+    table_pm$upper_exp <- (exp(table_pm$upper*iqrs2)-1)*100
+    table_pm = table_pm[,-c(1:3,5:6) ]
+# Sources
+nmf_glucose <- bam(log(glucose)~ X1_app +X2_app+X3_app+X4_app+X5_app+ mean_temp+as.factor(work2)+Total_hours911_930+age+ s(year,bs='ps') +  as.factor(Race4) + as.factor(edu4)+ pct_black + MEDHH + pct_poverty+pct_NoHS+s(RunningID,bs='re'),data=female)
+
+    nmf=summary(nmf_glucose)$p.table
+    nmf<-as.data.frame(nmf,keep.rownames = TRUE)[] # Format as datatable
+    table_nmf=nmf[2:6,]
+
+    # get upper and lower bound
+    table_nmf$lower = table_nmf$Estimate - qnorm(0.975) * table_nmf$`Std. Error`
+    table_nmf$upper = table_nmf$Estimate + qnorm(0.975) * table_nmf$`Std. Error`
+    
+    # exponentiate estimate and bounds
+    table_nmf$Estimate_exp <- (exp(table_nmf$Estimate*iqrs)-1)*100
+    table_nmf$lower_exp <- (exp(table_nmf$lower*iqrs)-1)*100
+    table_nmf$upper_exp <- (exp(table_nmf$upper*iqrs)-1)*100
+    table_nmf = table_nmf[,-c(1:3,5:6) ]
+
+    #Combine
+    b=rbind(table_pm,table_nmf)
+b$exposure <- rownames(b)
+b$outcome='Women'
+```
+
+```{r}
+df = rbind(a,b)
+```
+
+# Figure 1:
+```{r}
+tiff("C:/Users/furmah01/OneDrive - The Mount Sinai Hospital/WTC new data 2022/Helena -aim 2/Glucose and Diab/american journal of epidemiology/After Review/to send/Final/Figure1.tiff", units="in", width=6, height=5, res=300)
+
+ggplot(df) + 
+    geom_pointrange(aes(x = exposure, y = Estimate_exp, ymin = lower_exp, ymax = upper_exp,col = factor(outcome)),position=position_dodge(width=0.60))+ geom_hline(aes(yintercept = 0)) + xlab("Exposures") + ylab("% Change & 95% CI") +theme_minimal()+ geom_vline(xintercept = 1.5, linetype="dashed", 
+                color = "black", size=0.6)+
+    #scale_color_discrete(name="Sex:")+scale_shape_discrete(name="Sex:")+
+     scale_x_discrete(labels=c('PM2.5',"Biomass Burning","Oil Combustion","Metal Industry", "Other Industry",'MVRD')) +
+    theme(legend.position = "bottom",axis.line = element_line(colour = "black"),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    panel.border = element_blank(),
+    panel.background = element_blank(),
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    axis.title.x = element_blank(),
+    legend.title=element_blank())+
+  annotate(geom="text", x=1, y=1, color="black",label="P-value = 0.002", size=3.5) +
+  annotate(geom="text", x=2.2, y=2, color="black",label="P-value = 0.012", size=3.5)+
+  annotate(geom="text", x=3, y=1.5, color="black",label="P-value  < 0.001", size=3.5)+
+  annotate(geom="text", x=4, y=3, color="black",label="P-value = 0.116", size=3.5)+
+  annotate(geom="text", x=5, y=1.5, color="black",label="P-value = 0.183", size=3.5)+
+  annotate(geom="text", x=6, y=2, color="black",label="P- value  <0.001", size=3.5)+ scale_color_grey() + 
+geom_segment(x = 0.4, y = 3.5, xend = 1.5, yend = 3.5) +  annotate(geom="text", x=1, y=3.7, color="black",label="Model1", size=3.5)+
+  geom_segment(x = 1.7, y = 3.5, xend = 6.5, yend = 3.5) + annotate(geom="text", x=4, y=3.7, color="black",label="Model2", size=3.5)
+
+dev.off()
+```
+
+
+################################## Diabetes ##############################
+table 3
+# factors and sources
+```{r}
+ mod = bam(diab_diag3 ~ X1_app+X2_app+X3_app+X4_app+X5_app+mean_temp+ as.factor(work2)+total_days_October_June+age + as.factor(Gender) + as.factor(Race4) + as.factor(edu4) + pct_poverty + pct_black + pct_NoHS +MEDHH +s(year,bs='ps'), data = diab_wtc, family = poisson )
+
+    nmf=summary(mod)$p.table
+    nmf<-as.data.frame(nmf,keep.rownames = TRUE)[] # Format as datatable
+    table_nmf=nmf[2:6,]
+    
+    # get upper and lower bound
+    table_nmf$lower = table_nmf$Estimate - qnorm(0.975) * table_nmf$`Std. Error`
+    table_nmf$upper = table_nmf$Estimate + qnorm(0.975) * table_nmf$`Std. Error`
+    
+    # exponentiate estimate and bounds
+    table_nmf$Estimate_exp <- exp(table_nmf$Estimate*iqrs)
+    table_nmf$lower_exp <- exp(table_nmf$lower*iqrs)
+    table_nmf$upper_exp <- exp(table_nmf$upper*iqrs)
+    table_nmf = table_nmf[,-c(1:3,5:6) ]
+```
+
+# PM 
+```{r}
+ mod = bam(diab_diag3 ~ pm+ mean_temp+ as.factor(work2)+total_days_October_June+age + as.factor(Gender) + as.factor(Race4) + as.factor(edu4) + pct_poverty + pct_black + pct_NoHS +MEDHH +s(year,bs='ps'), data = diab_wtc, family = poisson )
+
+    pm=summary(mod)$p.table
+    pm<-as.data.frame(pm,keep.rownames = TRUE)[] # Format as datatable
+    table_pm=pm[2,]
+    
+    # get upper and lower bound
+    table_pm$lower = table_pm$Estimate - qnorm(0.975) * table_pm$`Std. Error`
+    table_pm$upper = table_pm$Estimate + qnorm(0.975) * table_pm$`Std. Error`
+    
+    # exponentiate estimate and bounds
+    table_pm$Estimate_exp <- exp(table_pm$Estimate*iqrs2)
+    table_pm$lower_exp <- exp(table_pm$lower*iqrs2)
+    table_pm$upper_exp <- exp(table_pm$upper*iqrs2)
+    table_pm = table_pm[,-c(1:3,5:6) ]
+```
+
+```{r}
+a = rbind(table_pm,table_nmf)
+
+a$Estimate_exp2 <- (a$Estimate_exp - 1) * 100
+a$lower_exp2 <- (a$lower_exp - 1) * 100
+a$upper_exp2 <- (a$upper_exp - 1) * 100
+
+  # add significance
+  a$sig <- ifelse(a$`Pr(>|z|)` < 0.001, "***",
+                    ifelse(a$`Pr(>|z|)` < 0.01, "**",
+                           ifelse(a$`Pr(>|z|)` < 0.05, "*",
+                                  ifelse(a$`Pr(>|z|)` < 0.1, ".",""))))
+  # Round values 
+  a$`Pr(>|z|)` <- round(a$`Pr(>|z|)`, 3)
+  a$Estimate_exp2 <- round(a$Estimate_exp2, 3)
+  a$lower_exp2 <- round(a$lower_exp2, 3)
+  a$upper_exp2 <- round(a$upper_exp2, 3)
+  a$complete <- paste(a$Estimate_exp2, "(", a$lower_exp2, ";", a$upper_exp2, ")", a$sig)
+  a[,c(2,9)]
+```
+
+# Interaction with sex table S2
+```{r}
+mod = bam(diab_diag3 ~ pm*as.factor(Gender)+mean_temp+ as.factor(work2)+total_days_October_June+age +  as.factor(Race4) + as.factor(edu4) + pct_poverty + pct_black + pct_NoHS +MEDHH +s(year,bs='ps'), data = diab_wtc, family = poisson)
+smod=summary(mod)$p.table
+smod=smod[nrow(smod), , drop = FALSE]
+
+mod1 = bam(diab_diag3 ~ X1_app*as.factor(Gender)+X2_app+X3_app+X4_app+X5_app+mean_temp+ as.factor(work2)+total_days_October_June+age +  as.factor(Race4) + as.factor(edu4) + pct_poverty + pct_black + pct_NoHS  +MEDHH +s(year,bs='ps'), data = diab_wtc, family = poisson )
+smod1=summary(mod1)$p.table
+smod1=smod1[nrow(smod1), , drop = FALSE]
+
+mod2 = bam(diab_diag3 ~ X1_app+X2_app*as.factor(Gender)+X3_app+X4_app+X5_app+mean_temp+ as.factor(work2)+total_days_October_June+age + as.factor(Race4) + as.factor(edu4) + pct_poverty + pct_black + pct_NoHS  +MEDHH +s(year,bs='ps'), data = diab_wtc, family = poisson )
+smod2=summary(mod2)$p.table
+smod2=smod2[nrow(smod2), , drop = FALSE]
+
+mod3 = bam(diab_diag3 ~ X1_app+X2_app+X3_app*as.factor(Gender)+X4_app+X5_app+mean_temp+ as.factor(work2)+total_days_October_June+age + as.factor(Race4) + as.factor(edu4) + pct_poverty + pct_black + pct_NoHS  +MEDHH +s(year,bs='ps'), data = diab_wtc, family = poisson )
+smod3=summary(mod3)$p.table
+smod3=smod3[nrow(smod3), , drop = FALSE]
+
+mod4 = bam(diab_diag3 ~ X1_app+X2_app+X3_app+X4_app*as.factor(Gender)+X5_app+mean_temp+ as.factor(work2)+total_days_October_June+age + as.factor(Race4) + as.factor(edu4) + pct_poverty + pct_black + pct_NoHS  +MEDHH +s(year,bs='ps'), data = diab_wtc, family = poisson )
+smod4=summary(mod4)$p.table
+smod4=smod4[nrow(smod4), , drop = FALSE]
+
+mod5 = bam(diab_diag3 ~ X1_app+X2_app+X3_app+X4_app+X5_app*as.factor(Gender)+mean_temp+ as.factor(work2)+total_days_October_June+age + as.factor(Race4) + as.factor(edu4) + pct_poverty + pct_black + pct_NoHS  +MEDHH +s(year,bs='ps'), data = diab_wtc, family = poisson )
+smod5=summary(mod5)$p.table
+smod5=smod5[nrow(smod5), , drop = FALSE]
+```
+
+```{r}
+dust=rbind(smod,smod1,smod2,smod3,smod4,smod5)
+dust<-as.data.frame(dust,keep.rownames = TRUE)[] # Format as datatable
+dust=subset(dust,select=`Pr(>|z|)`)
+dust$`Pr(>|t|)` <- round(dust$`Pr(>|z|)`, 3)
+```
+
+# stratify by sex 
+```{r}
+male = subset(diab_wtc,Gender==0)
+female = subset(diab_wtc,Gender==1)
+```
+
+# male
+```{r}
+# model of PM and temp, use gluc, pm per iqr
+ mod = bam(diab_diag3 ~ pm+ mean_temp+ as.factor(work2)+total_days_October_June+age  + as.factor(Race4) + as.factor(edu4) + pct_poverty + pct_black + pct_NoHS +MEDHH +s(year,bs='ps'), data = male, family = poisson )
+
+    pm=summary(mod)$p.table
+    pm<-as.data.frame(pm,keep.rownames = TRUE)[] # Format as datatable
+    table_pm=pm[2,]
+    
+    # get upper and lower bound
+    table_pm$lower = table_pm$Estimate - qnorm(0.975) * table_pm$`Std. Error`
+    table_pm$upper = table_pm$Estimate + qnorm(0.975) * table_pm$`Std. Error`
+    
+    # exponentiate estimate and bounds
+    table_pm$Estimate_exp <- exp(table_pm$Estimate*iqrs2)
+    table_pm$lower_exp <- exp(table_pm$lower*iqrs2)
+    table_pm$upper_exp <- exp(table_pm$upper*iqrs2)
+    table_pm = table_pm[,-c(1:3,5:6) ]
+
+    # Sources
+ mod = bam(diab_diag3 ~ X1_app+X2_app+X3_app+X4_app+X5_app+mean_temp+ as.factor(work2)+total_days_October_June+age + as.factor(Race4) + as.factor(edu4) + pct_poverty + pct_black + pct_NoHS +MEDHH +s(year,bs='ps'), data = male, family = poisson )
+
+    nmf=summary(mod)$p.table
+    nmf<-as.data.frame(nmf,keep.rownames = TRUE)[] # Format as datatable
+    table_nmf=nmf[2:6,]
+    
+    # get upper and lower bound
+    table_nmf$lower = table_nmf$Estimate - qnorm(0.975) * table_nmf$`Std. Error`
+    table_nmf$upper = table_nmf$Estimate + qnorm(0.975) * table_nmf$`Std. Error`
+    
+    # exponentiate estimate and bounds
+    table_nmf$Estimate_exp <- exp(table_nmf$Estimate*iqrs)
+    table_nmf$lower_exp <- exp(table_nmf$lower*iqrs)
+    table_nmf$upper_exp <- exp(table_nmf$upper*iqrs)
+    table_nmf = table_nmf[,-c(1:3,5:6) ]
+
+    #Combine
+a=rbind(table_pm,table_nmf)
+a$exposure <- rownames(a)
+a$outcome='Men'
+```
+  
+# female
+```{r}
+# model of PM and temp, use gluc, pm per iqr
+ mod = bam(diab_diag3 ~ pm+ mean_temp+ as.factor(work2)+total_days_October_June+age  + as.factor(Race4) + as.factor(edu4) + pct_poverty + pct_black + pct_NoHS +MEDHH +s(year,bs='ps'), data = female, family = poisson )
+
+    pm=summary(mod)$p.table
+    pm<-as.data.frame(pm,keep.rownames = TRUE)[] # Format as datatable
+    table_pm=pm[2,]
+    
+    # get upper and lower bound
+    table_pm$lower = table_pm$Estimate - qnorm(0.975) * table_pm$`Std. Error`
+    table_pm$upper = table_pm$Estimate + qnorm(0.975) * table_pm$`Std. Error`
+    
+    # exponentiate estimate and bounds
+    table_pm$Estimate_exp <- exp(table_pm$Estimate*iqrs2)
+    table_pm$lower_exp <- exp(table_pm$lower*iqrs2)
+    table_pm$upper_exp <- exp(table_pm$upper*iqrs2)
+    table_pm = table_pm[,-c(1:3,5:6) ]
+# Sources
+ mod = bam(diab_diag3 ~ X1_app+X2_app+X3_app+X4_app+X5_app+mean_temp+ as.factor(work2)+total_days_October_June+age + as.factor(Race4) + as.factor(edu4) + pct_poverty + pct_black + pct_NoHS +MEDHH +s(year,bs='ps'), data = female, family = poisson )
+
+    nmf=summary(mod)$p.table
+    nmf<-as.data.frame(nmf,keep.rownames = TRUE)[] # Format as datatable
+    table_nmf=nmf[2:6,]
+    
+    # get upper and lower bound
+    table_nmf$lower = table_nmf$Estimate - qnorm(0.975) * table_nmf$`Std. Error`
+    table_nmf$upper = table_nmf$Estimate + qnorm(0.975) * table_nmf$`Std. Error`
+    
+    # exponentiate estimate and bounds
+    table_nmf$Estimate_exp <- exp(table_nmf$Estimate*iqrs)
+    table_nmf$lower_exp <- exp(table_nmf$lower*iqrs)
+    table_nmf$upper_exp <- exp(table_nmf$upper*iqrs)
+    table_nmf = table_nmf[,-c(1:3,5:6) ]
+
+    #Combine
+    b=rbind(table_pm,table_nmf)
+b$exposure <- rownames(b)
+b$outcome='Women'
+```
+
+```{r}
+df = rbind(a,b)
+
+df$Estimate_exp2 <- (df$Estimate_exp - 1) * 100
+df$lower_exp2 <- (df$lower_exp - 1) * 100
+df$upper_exp2 <- (df$upper_exp - 1) * 100
+```
+
+```{r}
+# Figure 1:
+tiff("C:/Users/furmah01/OneDrive - The Mount Sinai Hospital/WTC new data 2022/Helena -aim 2/For paper/Figure_gluc_sex.tiff", units="in", width=6, height=5, res=300)
+
+ggplot(df) + 
+    geom_pointrange(aes(x = exposure, y = Estimate_exp2, ymin = lower_exp2, ymax = upper_exp2,col = factor(outcome)),position=position_dodge(width=0.60))+ geom_hline(aes(yintercept = 0)) + xlab("Exposures") + ylab("% Change & 95% CI") +theme_minimal()+ 
+  #geom_vline(xintercept = 1.5, linetype="dashed",color = "black", size=0.6)+
+     scale_x_discrete(labels=c('PM2.5',"Biomass Burning","Oil Combustion","Metal Industry", "Other Industry",'MVRD')) +
+    theme(legend.position = "bottom",axis.line = element_line(colour = "black"),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    panel.border = element_blank(),
+    panel.background = element_blank(),
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    axis.title.x = element_blank(),
+    legend.title=element_blank())+
+  annotate(geom="text", x=1, y=1, color="black",label="P-value = 0.002", size=3.5) +
+  annotate(geom="text", x=2.2, y=2, color="black",label="P-value = 0.012", size=3.5)+
+  annotate(geom="text", x=3, y=1.5, color="black",label="P-value  < 0.001", size=3.5)+
+  annotate(geom="text", x=4, y=3, color="black",label="P-value = 0.116", size=3.5)+
+  annotate(geom="text", x=5, y=1.5, color="black",label="P-value = 0.183", size=3.5)+
+  annotate(geom="text", x=6, y=2, color="black",label="P- value  <0.001", size=3.5)+ scale_color_grey() + 
+geom_segment(x = 0.4, y = 3.5, xend = 1.5, yend = 3.5) +  annotate(geom="text", x=1, y=3.7, color="black",label="Model1", size=3.5)+
+  geom_segment(x = 1.7, y = 3.5, xend = 6.5, yend = 3.5) + annotate(geom="text", x=4, y=3.7, color="black",label="Model2", size=3.5)
+
+dev.off()
+```
+
+
+# Table 3. Glucose with IPW 
+# because not all people had glucose vlues sensetivity analysis for the chance to have glucose
+```{r}
+# PM 
+pm_glucose <- bam(log(glucose)~ pm + as.factor(work2)+ age+s(year,bs='ps') + as.factor(Gender) + as.factor(Race4) + as.factor(edu4)+ pct_black + MEDHH + pct_poverty+pct_NoHS+s(RunningID,bs='re'),data=gluc_wtc)
+
+# Extract the predicted probabilities (propensity scores)
+gluc_scores <- predict(pm_glucose, gluc_wtc ,type = "response")
+ipw_horror <- 1 / gluc_scores
+gluc_wtc$score = as.data.frame(ipw_horror)
+
+pm_glucose2 <- bam(log(glucose)~ pm + as.factor(work2)+age+s(year,bs='ps') + as.factor(Gender) + as.factor(Race4) + as.factor(edu4)+ pct_black + MEDHH + pct_poverty+pct_NoHS+s(RunningID,bs='re'),data=gluc_wtc, weights = gluc_wtc$score$ipw_horror)
+
+    pm=summary(pm_glucose2)$p.table
+    pm<-as.data.frame(pm,keep.rownames = TRUE)[] # Format as datatable
+    table_pm=pm[2,]
+    
+    # get upper and lower bound
+    table_pm$lower = table_pm$Estimate - qnorm(0.975) * table_pm$`Std. Error`
+    table_pm$upper = table_pm$Estimate + qnorm(0.975) * table_pm$`Std. Error`
+    
+    # exponentiate estimate and bounds
+    table_pm$Estimate_exp <- exp(table_pm$Estimate*iqrs2)
+    table_pm$lower_exp <- exp(table_pm$lower*iqrs2)
+    table_pm$upper_exp <- exp(table_pm$upper*iqrs2)
+    table_pm = table_pm[,-c(1:3,5:6) ]
+```
+
+```{r}
+# Sources
+nmf_glucose <- bam(log(glucose)~ X1_app +X2_app+X3_app+X4_app+X5_app+ as.factor(work2)+age+ s(year,bs='ps') + as.factor(Gender) + as.factor(Race4) + as.factor(edu4)+ pct_black + MEDHH + pct_poverty+pct_NoHS+s(RunningID,bs='re'),data=gluc_wtc)
+
+# Extract the predicted probabilities (propensity scores)
+gluc_scores <- predict(nmf_glucose, gluc_wtc ,type = "response")
+ipw_horror <- 1 / gluc_scores
+gluc_wtc$score2 = as.data.frame(ipw_horror)
+
+nmf_glucose2 <- bam(log(glucose)~ X1_app +X2_app+X3_app+X4_app+X5_app +as.factor(work2)+age+ s(year,bs='ps') + as.factor(Gender) + as.factor(Race4) + as.factor(edu4)+ pct_black + MEDHH + pct_poverty+pct_NoHS+s(RunningID,bs='re'),data=gluc_wtc,weights = gluc_wtc$score2$ipw_horror)
+
+    nmf=summary(nmf_glucose2)$p.table
+    nmf<-as.data.frame(nmf,keep.rownames = TRUE)[] # Format as datatable
+    table_nmf=nmf[2:6,]
+    
+    # get upper and lower bound
+    table_nmf$lower = table_nmf$Estimate - qnorm(0.975) * table_nmf$`Std. Error`
+    table_nmf$upper = table_nmf$Estimate + qnorm(0.975) * table_nmf$`Std. Error`
+    
+    # exponentiate estimate and bounds
+    table_nmf$Estimate_exp <- exp(table_nmf$Estimate*iqrs)
+    table_nmf$lower_exp <- exp(table_nmf$lower*iqrs)
+    table_nmf$upper_exp <- exp(table_nmf$upper*iqrs)
+    table_nmf = table_nmf[,-c(1:3,5:6) ]
+```
+
+```{r}
+a = rbind(table_pm,table_nmf)
+
+a$Estimate_exp2 <- (a$Estimate_exp - 1) * 100
+a$lower_exp2 <- (a$lower_exp - 1) * 100
+a$upper_exp2 <- (a$upper_exp - 1) * 100
+
+a[,-c(1:4) ]
+```
+
