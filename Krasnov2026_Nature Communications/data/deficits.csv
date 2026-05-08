@@ -1,0 +1,31 @@
+Name in data,Full name,number of deficit rows,percentage
+EARS,,5492,4.091515246
+EXTREMITIES,,6086,4.534042569
+EYES,,2023,1.507125882
+GEN_APPEARANCE,,85098,63.39762644
+HEART,,3252,2.422725343
+IAMQ_02D_04_00,pneumonia,2,0.001489991
+IAMQ_05A_07_01,difficulty hearing?,22461,16.73334376
+IAMQ_07_01_01,inability to taste?,8227,6.129077919
+IAMQ_07_03_01,difficulty swallowing?,13547,10.09245394
+IAMQ_07_05_01,Coughing after you lie down or eat?,16352,12.1821663
+IAMQ_10A_06_00,diabetes,108,0.080459513
+IAMQ_11A_03_02,Change in bowel habits?,15138,11.27774177
+IAMQ_11A_04_02,difficulty urinating?,20159,15.01836414
+IAMQ_11A_07_02,unexplained weight loss?,4107,3.059696489
+IAMQ_11A_10_02,persistent fatigue,30896,23.01738074
+SAMHQ_01_01,"n general, would you say your health is",36916,27.50225361
+SAMHQ_01_02,"Does your health now limit you in : Moderate activities, such as moving a table, pushing a vacuum cleaner, bowling, or playing golf",16453,12.25741084
+SAMHQ_01_03,Does your health now limit you in : Climbing several flights of stairs,23058,17.17810607
+SAMHQ_01_04,your physical health: Accomplished less than you would like,44477,33.13516453
+SAMHQ_01_05,your physical health: Were limited in the kind of work or other activities,44477,31.03427724
+SAMHQ_01_06,any emotional problems (such as feeling depressed or anxious)? - Accomplished less than you would like,34087,25.39466136
+SAMHQ_01_07,any emotional problems (such as feeling depressed or anxious)? - Did work or other activities less carefully than usual,25967,19.34529796
+SAMHQ_01_08,how much did pain interfere with your normal work (including both work outside the home and housework),23319,17.3725499
+SAMHQ_01_09,How much of the time during the past 4 weeks.... Have you felt calm and peaceful?,14394,10.72346512
+SAMHQ_01_10, How much of the time during the past 4 weeks.... Did you have a lot of energy?,22410,16.69534899
+SAMHQ_01_11,How much of the time during the past 4 weeks.... Have you felt downhearted and blue?,8620,6.421861148
+SAMHQ_01_12,"During the past 4 weeks, how much of the time has your physical health or emotional problems interfered with your social activities (like visiting friends, relatives, etc.)?",15635,11.64800453
+SAMHQ_01_14,"How much trouble have you had with your short-term memory (e.g. forgetting where you left your keys, items at the grocery store, etc.)",20877,15.5532709
+SAMHQ_04_15,"In the past month, how much have you been bothered by: frequency of difficulty concentrating",16893,12.58520886
+IAMQ_med_01,medication,55919,41.65940296

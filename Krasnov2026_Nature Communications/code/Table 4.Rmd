@@ -1,0 +1,559 @@
+---
+title: "Table 4: effect modification"
+output: html_document
+date: "2026-04-05"
+---
+This code represents the original analytic workflow used in the study. Since the original data cannot be shared due to data-use and confidentiality restrictions, we created a simulated dataset to demonstrate code reproducibility and analytic procedures. As a result, the outputs generated from the simulated data differ from the results presented in the manuscript.
+
+The simulation data is located in the zip file attached to this code
+
+The analysis for Table 4 is computationally intensive. Therefore, to facilitate code examination, we added an option to subset 2,000 observations and run the code over 3 bootstrap iterations. In the paper, we used the complete original dataset with b = 1,000 bootstrap iterations.
+
+```{r include=FALSE}
+install.packages(dplyr)
+install.packages(mgcv)
+install.packages(table1)
+install.packages(tableone)
+install.packages(qgcomp)
+install.packages(qgcompint)
+install.packages(lubridate)
+install.packages(ggplot2)
+install.packages(tidyr)
+```
+
+#Libraries
+```{r include=FALSE}
+library(dplyr)
+library(mgcv)
+library(table1)
+library(tableone)
+library(qgcomp)
+library(qgcompint)
+library(lubridate)
+library(ggplot2)
+library(tidyr)
+```
+
+# set working direcory
+```{r}
+#wd = "C:/Users/furmah01/OneDrive - The Mount Sinai Hospital/WTC new data 2022/Frailty/Manuscript/After review/data"
+wd = "C:/Users/yitshm01/OneDrive - The Mount Sinai Hospital/Maayans lab/Pablo/WTC new data 2022/Frailty/Manuscript/After review/data"
+```
+
+# import data
+```{r}
+data = read.csv(paste0(wd, '/Sim_Data.csv'))
+# CODE CHECK ONLY: restrict to 300 observations to shorten processing time; remove for full analysis
+set.seed(123)
+data <- data[sample(nrow(data), 2000), ]
+```
+
+#Binary modifiers as factors
+```{r}
+# low exposure or intermidiate/high
+data$exp911_imp2<- as.factor(data$exp911_imp2)
+data$arr_9_11_13<- as.factor(data$arr_9_11_13)
+data$horror<- as.factor(data$horror)
+```
+
+# The population for the frailty analysis is restricted to rows with less than 27 deficits 
+```{r}
+data_index= subset(data, non_na_count >=27)
+```
+
+#Datasets
+# Remove outliers from the full and restricted datasets 
+# df_trimmed = The data for the frailty analysis
+# df_trimmed2 = The data for the mental illness analyses
+```{r}
+#Function to remove lower and upper 0.5% in the exposure distributions to avoid bias due to extreme values. 
+trim_df <- function(data, vars, p = 0.005) {
+  # Loop over variables and compute quantiles
+  for (v in vars) {
+    lower <- quantile(data[[v]], p, na.rm = TRUE)
+    upper <- quantile(data[[v]], 1 - p, na.rm = TRUE)
+    
+    # Keep only rows within range
+    data <- data[data[[v]] >= lower & data[[v]] <= upper, ]
+  }
+  return(data)
+}
+
+# Apply to temperature and PM exposures
+df_trimmed <- trim_df(data_index, vars = c('pm','mean_temp'))
+
+df_trimmed <- df_trimmed %>%
+  filter(!if_all(everything(), is.na))
+
+df_trimmed2 <- trim_df(data, vars = c('pm','mean_temp'))
+
+df_trimmed2 <- df_trimmed2 %>%
+  filter(!if_all(everything(), is.na))
+```
+
+#Mixture
+```{r}
+mixture =  c("pm", "mean_temp", 'Mean_GVI_300')
+```
+
+#Complete cases subset for the frailty analysis
+```{r}
+df_complete <- df_trimmed  %>%
+  dplyr::select(RunningID,frailty.sum,non_na_count, pm, mean_temp, Mean_GVI_300, age, year, Race4, edu4,pct_black, MEDHH, pct_poverty, pct_NoHS, work2, smoke2,arr_9_11_13,exp911_imp2,horror,Gender) %>%
+  na.omit()
+```
+
+#For PTSD
+```{r}
+df_complete2 <- df_trimmed2  %>%
+  dplyr::select(RunningID,PTSD,non_na_count, pm, mean_temp, Mean_GVI_300, age, year, Race4, edu4,pct_black, MEDHH, pct_poverty, pct_NoHS, work2, smoke2,arr_9_11_13,exp911_imp2,horror,Gender) %>%
+  na.omit()
+```
+
+#For depression
+```{r}
+df_complete3 <- df_trimmed2 %>%
+  dplyr::select(RunningID,depression, pm, mean_temp, Mean_GVI_300, age, year, Race4, edu4,pct_black, MEDHH, pct_poverty, pct_NoHS, work2, exp911_imp2, smoke2, arr_9_11_13, horror,Gender) %>%
+  na.omit()
+```
+
+
+#Models for frailty
+#WTC index
+```{r setup, include=FALSE}
+# --- Model 1: exp911_imp2 ---
+qfit_exp <- qgcomp.emm.glm.boot(
+  frailty.sum ~ pm + Mean_GVI_300 + mean_temp + age +
+    as.factor(Gender) + as.factor(year) + as.factor(Race4) + as.factor(edu4) +
+    pct_black + MEDHH + pct_poverty + pct_NoHS +
+    as.factor(smoke2) + as.factor(work2),
+  data = df_complete, expnms = mixture, emmvar = "exp911_imp2",
+  q = 10, family = poisson(link = "log"), id = "RunningID",
+  B = 3, degree = 1, parallel = TRUE, parplan = TRUE #Use b=1000, changed to 3 to examine the code
+)
+
+qfit_exp
+
+# Save just the coefficient table
+# Extract coefficient table with CIs
+coef_exp <- data.frame(
+  term       = names(qfit_exp$coef),
+  Estimate   = qfit_exp$coef,
+  SE         = sqrt(diag(qfit_exp$covmat.coef)),
+  LowerCI    = qfit_exp$ci.coef[, 1],
+  UpperCI    = qfit_exp$ci.coef[, 2]
+)
+coef_exp$Zvalue <- coef_exp$Estimate / coef_exp$SE
+coef_exp$Pvalue <- 2 * (1 - pnorm(abs(coef_exp$Zvalue)))
+
+write.csv(coef_exp, paste0(wd, "/frailty_exp911.csv"))
+```
+
+# --- Model 2: arr_9_11_13 ---
+```{r}
+qfit_arr <- qgcomp.emm.glm.boot(
+  frailty.sum ~ pm + Mean_GVI_300 + mean_temp + age +
+    as.factor(Gender) + as.factor(year) + as.factor(Race4) + as.factor(edu4) +
+    pct_black + MEDHH + pct_poverty + pct_NoHS +
+    as.factor(smoke2) + as.factor(work2),
+  data = df_complete, expnms = mixture, emmvar = "arr_9_11_13",
+  q = 10, family = poisson(link = "log"), id ="RunningID",
+  B = 3, degree = 1, parallel = TRUE, parplan = TRUE #Use b=1000, changed to 3 to examine the code
+)
+
+qfit_arr
+
+# Save just the coefficient table
+# Extract coefficient table with CIs
+coef_exp <- data.frame(
+  term       = names(qfit_arr$coef),
+  Estimate   = qfit_arr$coef,
+  SE         = sqrt(diag(qfit_arr$covmat.coef)),
+  LowerCI    = qfit_arr$ci.coef[, 1],
+  UpperCI    = qfit_arr$ci.coef[, 2]
+)
+coef_exp$Zvalue <- coef_exp$Estimate / coef_exp$SE
+coef_exp$Pvalue <- 2 * (1 - pnorm(abs(coef_exp$Zvalue)))
+
+write.csv(coef_exp, paste0(wd, "/frailty_arrival.csv"))
+```
+
+```{r}
+qfit_hor <- qgcomp.emm.glm.boot(
+  frailty.sum ~ pm + Mean_GVI_300 + mean_temp + age +
+    as.factor(Gender) + as.factor(year) + as.factor(Race4) + as.factor(edu4) +
+    pct_black + MEDHH + pct_poverty + pct_NoHS +
+    as.factor(smoke2) + as.factor(work2),
+  data = df_complete, expnms = mixture, emmvar = "horror",
+  q = 10, family = poisson(link = "log"), id = "RunningID",
+  B = 3, degree = 1, parallel = TRUE, parplan = TRUE #Use b=1000, changed to 3 to examine the code
+)
+
+qfit_hor
+
+coef_exp <- data.frame(
+  term       = names(qfit_hor$coef),
+  Estimate   = qfit_hor$coef,
+  SE         = sqrt(diag(qfit_hor$covmat.coef)),
+  LowerCI    = qfit_hor$ci.coef[, 1],
+  UpperCI    = qfit_hor$ci.coef[, 2]
+)
+coef_exp$Zvalue <- coef_exp$Estimate / coef_exp$SE
+coef_exp$Pvalue <- 2 * (1 - pnorm(abs(coef_exp$Zvalue)))
+
+write.csv(coef_exp, paste0(wd, "/frailty_horror.csv"))
+```
+
+#Save vcov for the SE calculations
+```{r}
+# Save covariance matrix alongside coefficients
+saveRDS(qfit_exp$covmat.coef, paste0(wd, "/qfit_frailty_exp911_covmat.rds"))
+saveRDS(qfit_arr$covmat.coef, paste0(wd, "/qfit_frailty_arr_covmat.rds"))
+saveRDS(qfit_hor$covmat.coef, paste0(wd, "/qfit_frailty_hor_covmat.rds"))
+```
+
+#Load results
+```{r}
+make_row_csv <- function(modifier, coef_df, covmat) {
+  
+  int_term <- coef_df$term[grep("mixture", coef_df$term)]
+  
+  psi0     <- coef_df$Estimate[coef_df$term == "psi1"]
+  ci_low0  <- coef_df$LowerCI[coef_df$term == "psi1"]
+  ci_high0 <- coef_df$UpperCI[coef_df$term == "psi1"]
+  
+  int_est  <- coef_df$Estimate[coef_df$term == int_term]
+  p_int    <- coef_df$Pvalue[coef_df$term == int_term]
+  
+  psi1 <- psi0 + int_est
+  
+  # Proper SE using full covariance matrix
+  se1 <- sqrt(
+    covmat["psi1", "psi1"] + 
+    covmat[int_term, int_term] + 
+    2 * covmat["psi1", int_term]
+  )
+  
+  data.frame(
+    modifier      = modifier,
+    pct_change_0  = round((exp(psi0) - 1) * 100, 3),
+    ci_low_0      = round((exp(ci_low0) - 1) * 100, 3),
+    ci_high_0     = round((exp(ci_high0) - 1) * 100, 3),
+    pct_change_1  = round((exp(psi1) - 1) * 100, 3),
+    ci_low_1      = round((exp(psi1 - 1.96 * se1) - 1) * 100, 3),
+    ci_high_1     = round((exp(psi1 + 1.96 * se1) - 1) * 100, 3),
+    p_interaction = round(p_int, 4)
+  )
+}
+
+# Load results
+wtc_coef <- read.csv(paste0(wd,"/frailty_exp911.csv"))
+arr_coef <- read.csv(paste0(wd,"/frailty_arrival.csv"))
+hor_coef <- read.csv(paste0(wd,"/frailty_horror.csv"))
+
+# Load covariance matrices
+covmat_exp <- readRDS(paste0(wd,"/qfit_frailty_exp911_covmat.rds"))
+covmat_arr <- readRDS(paste0(wd,"/qfit_frailty_arr_covmat.rds"))
+covmat_hor <- readRDS(paste0(wd,"/qfit_frailty_hor_covmat.rds"))
+
+results <- bind_rows(
+  make_row_csv("exp911_imp2", wtc_coef, covmat_exp),
+  make_row_csv("arr_9_11_13", arr_coef, covmat_arr),
+  make_row_csv("horror",      hor_coef, covmat_hor)
+)
+
+print(results)
+```
+
+##########
+#Models for ptsd
+#WTC index
+```{r setup, include=FALSE}
+# --- Model 1: exp911_imp2 ---
+
+qfit_exp_ptsd <- qgcomp.emm.glm.boot(
+  as.integer(PTSD) ~ pm + Mean_GVI_300 + mean_temp + age +
+    as.factor(Gender) + as.factor(year) + as.factor(Race4) + as.factor(edu4) +
+    pct_black + MEDHH + pct_poverty + pct_NoHS +
+    as.factor(smoke2) + as.factor(work2),
+  data = df_complete2, expnms = mixture, emmvar = "exp911_imp2",
+  q = 10, family = poisson(link = "log"), id = "RunningID",
+  B = 3, degree = 1, parallel = TRUE, parplan = TRUE #Use b=1000, changed to 3 to examine the code
+)
+
+qfit_exp_ptsd
+
+coef_exp <- data.frame(
+  term       = names(qfit_exp_ptsd$coef),
+  Estimate   = qfit_exp_ptsd$coef,
+  SE         = sqrt(diag(qfit_exp_ptsd$covmat.coef)),
+  LowerCI    = qfit_exp_ptsd$ci.coef[, 1],
+  UpperCI    = qfit_exp_ptsd$ci.coef[, 2]
+)
+coef_exp$Zvalue <- coef_exp$Estimate / coef_exp$SE
+coef_exp$Pvalue <- 2 * (1 - pnorm(abs(coef_exp$Zvalue)))
+
+write.csv(coef_exp, paste0(wd,"/ptsd_wtc.csv"))
+```
+
+# --- Model 2: arr_9_11_13 ---
+```{r}
+qfit_arr_ptsd <- qgcomp.emm.glm.boot(
+  as.integer(PTSD) ~ pm + Mean_GVI_300 + mean_temp + age +
+    as.factor(Gender) + as.factor(year) + as.factor(Race4) + as.factor(edu4) +
+    pct_black + MEDHH + pct_poverty + pct_NoHS +
+    as.factor(smoke2) + as.factor(work2),
+  data = df_complete2, expnms = mixture, emmvar = "arr_9_11_13",
+  q = 10, family = poisson(link = "log"), id ="RunningID",
+  B = 3, degree = 1, parallel = TRUE, parplan = TRUE #Use b=1000, changed to 3 to examine the code
+)
+
+qfit_arr_ptsd
+
+coef_exp <- data.frame(
+  term       = names(qfit_arr_ptsd$coef),
+  Estimate   = qfit_arr_ptsd$coef,
+  SE         = sqrt(diag(qfit_arr_ptsd$covmat.coef)),
+  LowerCI    = qfit_arr_ptsd$ci.coef[, 1],
+  UpperCI    = qfit_arr_ptsd$ci.coef[, 2]
+)
+coef_exp$Zvalue <- coef_exp$Estimate / coef_exp$SE
+coef_exp$Pvalue <- 2 * (1 - pnorm(abs(coef_exp$Zvalue)))
+
+write.csv(coef_exp, paste0(wd,"/ptsd_arr.csv"))
+```
+
+```{r}
+qfit_hor_ptsd <- qgcomp.emm.glm.boot(
+  as.integer(PTSD) ~ pm + Mean_GVI_300 + mean_temp + age +
+    as.factor(Gender) + as.factor(year) + as.factor(Race4) + as.factor(edu4) +
+    pct_black + MEDHH + pct_poverty + pct_NoHS +
+    as.factor(smoke2) + as.factor(work2),
+  data = df_complete2, expnms = mixture, emmvar = "horror",
+  q = 10, family = poisson(link = "log"), id = "RunningID",
+  B = 3, degree = 1, parallel = TRUE, parplan = TRUE #Use b=1000, changed to 3 to examine the code
+)
+
+qfit_hor_ptsd
+
+coef_exp <- data.frame(
+  term       = names(qfit_hor_ptsd$coef),
+  Estimate   = qfit_hor_ptsd$coef,
+  SE         = sqrt(diag(qfit_hor_ptsd$covmat.coef)),
+  LowerCI    = qfit_hor_ptsd$ci.coef[, 1],
+  UpperCI    = qfit_hor_ptsd$ci.coef[, 2]
+)
+coef_exp$Zvalue <- coef_exp$Estimate / coef_exp$SE
+coef_exp$Pvalue <- 2 * (1 - pnorm(abs(coef_exp$Zvalue)))
+
+write.csv(coef_exp, paste0(wd,"/ptsd_hor.csv"))
+```
+
+#Save vcov for the SE calculations
+```{r}
+# Save covariance matrix alongside coefficients
+saveRDS(qfit_exp_ptsd$covmat.coef,paste0(wd, "/ptsd_exp911_covmat.rds"))
+saveRDS(qfit_arr_ptsd$covmat.coef, paste0(wd,"/ptsd_arr_covmat.rds"))
+saveRDS(qfit_hor_ptsd$covmat.coef,paste0(wd, "/ptsd_hor_covmat.rds"))
+```
+
+#Load results
+```{r}
+make_row_csv <- function(modifier, coef_df, covmat) {
+  
+  int_term <- coef_df$term[grep("mixture", coef_df$term)]
+  
+  psi0     <- coef_df$Estimate[coef_df$term == "psi1"]
+  ci_low0  <- coef_df$LowerCI[coef_df$term == "psi1"]
+  ci_high0 <- coef_df$UpperCI[coef_df$term == "psi1"]
+  
+  int_est  <- coef_df$Estimate[coef_df$term == int_term]
+  p_int    <- coef_df$Pvalue[coef_df$term == int_term]
+  
+  psi1 <- psi0 + int_est
+  
+  # Proper SE using full covariance matrix
+  se1 <- sqrt(
+    covmat["psi1", "psi1"] + 
+    covmat[int_term, int_term] + 
+    2 * covmat["psi1", int_term]
+  )
+  
+  data.frame(
+    modifier      = modifier,
+    pct_change_0  = round((exp(psi0) - 1) * 100, 3),
+    ci_low_0      = round((exp(ci_low0) - 1) * 100, 3),
+    ci_high_0     = round((exp(ci_high0) - 1) * 100, 3),
+    pct_change_1  = round((exp(psi1) - 1) * 100, 3),
+    ci_low_1      = round((exp(psi1 - 1.96 * se1) - 1) * 100, 3),
+    ci_high_1     = round((exp(psi1 + 1.96 * se1) - 1) * 100, 3),
+    p_interaction = round(p_int, 4)
+  )
+}
+
+# Load results
+wtc_coef <- read.csv(paste0(wd,"/ptsd_wtc.csv"))
+arr_coef <- read.csv(paste0(wd,"/ptsd_arr.csv"))
+hor_coef <- read.csv(paste0(wd,"/ptsd_hor.csv"))
+
+# Load covariance matrices
+covmat_exp <- readRDS(paste0(wd,"/ptsd_exp911_covmat.rds"))
+covmat_arr <- readRDS(paste0(wd,"/ptsd_arr_covmat.rds"))
+covmat_hor <- readRDS(paste0(wd,"/ptsd_hor_covmat.rds"))
+
+results <- bind_rows(
+  make_row_csv("exp911_imp2", wtc_coef, covmat_exp),
+  make_row_csv("arr_9_11_13", arr_coef, covmat_arr),
+  make_row_csv("horror",      hor_coef, covmat_hor)
+)
+
+print(results)
+```
+
+
+
+##########
+#Models for depression
+#WTC index
+```{r setup, include=FALSE}
+# --- Model 1: exp911_imp2 ---
+
+qfit_exp_dep <- qgcomp.emm.glm.boot(
+  as.integer(depression) ~ pm + Mean_GVI_300 + mean_temp + age +
+    as.factor(Gender) + as.factor(year) + as.factor(Race4) + as.factor(edu4) +
+    pct_black + MEDHH + pct_poverty + pct_NoHS +
+    as.factor(smoke2) + as.factor(work2),
+  data = df_complete3, expnms = mixture, emmvar = "exp911_imp2",
+  q = 10, family = poisson(link = "log"), id = "RunningID",
+  B = 3, degree = 1, parallel = TRUE, parplan = TRUE #Use b=1000, changed to 3 to examine the code
+)
+
+qfit_exp_dep
+
+coef_exp <- data.frame(
+  term       = names(qfit_exp_dep$coef),
+  Estimate   = qfit_exp_dep$coef,
+  SE         = sqrt(diag(qfit_exp_dep$covmat.coef)),
+  LowerCI    = qfit_exp_dep$ci.coef[, 1],
+  UpperCI    = qfit_exp_dep$ci.coef[, 2]
+)
+coef_exp$Zvalue <- coef_exp$Estimate / coef_exp$SE
+coef_exp$Pvalue <- 2 * (1 - pnorm(abs(coef_exp$Zvalue)))
+
+write.csv(coef_exp,paste0(wd, "/dep_wtc.csv"))
+```
+
+# --- Model 2: arr_9_11_13 ---
+```{r}
+qfit_arr_dep <- qgcomp.emm.glm.boot(
+  as.integer(depression) ~ pm + Mean_GVI_300 + mean_temp + age +
+    as.factor(Gender) + as.factor(year) + as.factor(Race4) + as.factor(edu4) +
+    pct_black + MEDHH + pct_poverty + pct_NoHS +
+    as.factor(smoke2) + as.factor(work2),
+  data = df_complete3, expnms = mixture, emmvar = "arr_9_11_13",
+  q = 10, family = poisson(link = "log"), id ="RunningID",
+  B = 3, degree = 1, parallel = TRUE, parplan = TRUE #Use b=1000, changed to 3 to examine the code
+)
+
+qfit_arr_dep
+
+coef_exp <- data.frame(
+  term       = names(qfit_arr_dep$coef),
+  Estimate   = qfit_arr_dep$coef,
+  SE         = sqrt(diag(qfit_arr_dep$covmat.coef)),
+  LowerCI    = qfit_arr_dep$ci.coef[, 1],
+  UpperCI    = qfit_arr_dep$ci.coef[, 2]
+)
+coef_exp$Zvalue <- coef_exp$Estimate / coef_exp$SE
+coef_exp$Pvalue <- 2 * (1 - pnorm(abs(coef_exp$Zvalue)))
+
+write.csv(coef_exp,paste0(wd, "/dep_arr.csv"))
+
+```
+
+```{r}
+qfit_hor_dep <- qgcomp.emm.glm.boot(
+  as.integer(depression) ~ pm + Mean_GVI_300 + mean_temp + age +
+    as.factor(Gender) + as.factor(year) + as.factor(Race4) + as.factor(edu4) +
+    pct_black + MEDHH + pct_poverty + pct_NoHS +
+    as.factor(smoke2) + as.factor(work2),
+  data = df_complete3, expnms = mixture, emmvar = "horror",
+  q = 10, family = poisson(link = "log"), id = "RunningID",
+  B = 3, degree = 1, parallel = TRUE, parplan = TRUE #Use b=1000, changed to 3 to examine the code
+)
+
+qfit_hor_dep
+
+coef_exp <- data.frame(
+  term       = names(qfit_hor_dep$coef),
+  Estimate   = qfit_hor_dep$coef,
+  SE         = sqrt(diag(qfit_hor_dep$covmat.coef)),
+  LowerCI    = qfit_hor_dep$ci.coef[, 1],
+  UpperCI    = qfit_hor_dep$ci.coef[, 2]
+)
+coef_exp$Zvalue <- coef_exp$Estimate / coef_exp$SE
+coef_exp$Pvalue <- 2 * (1 - pnorm(abs(coef_exp$Zvalue)))
+
+write.csv(coef_exp,paste0(wd, "/dep_hor.csv"))
+```
+
+#Save vcov for the SE calculations
+```{r}
+# Save covariance matrix alongside coefficients
+saveRDS(qfit_exp_dep$covmat.coef, paste0(wd,"/dep_exp911_covmat.rds"))
+saveRDS(qfit_arr_dep$covmat.coef, paste0(wd,"/dep_arr_covmat.rds"))
+saveRDS(qfit_hor_dep$covmat.coef,paste0(wd, "/dep_hor_covmat.rds"))
+```
+
+```{r}
+make_row_csv <- function(modifier, coef_df, covmat) {
+  
+  int_term <- coef_df$term[grep("mixture", coef_df$term)]
+  
+  psi0     <- coef_df$Estimate[coef_df$term == "psi1"]
+  ci_low0  <- coef_df$LowerCI[coef_df$term == "psi1"]
+  ci_high0 <- coef_df$UpperCI[coef_df$term == "psi1"]
+  
+  int_est  <- coef_df$Estimate[coef_df$term == int_term]
+  p_int    <- coef_df$Pvalue[coef_df$term == int_term]
+  
+  psi1 <- psi0 + int_est
+  
+  # Proper SE using full covariance matrix
+  se1 <- sqrt(
+    covmat["psi1", "psi1"] + 
+    covmat[int_term, int_term] + 
+    2 * covmat["psi1", int_term]
+  )
+  
+  data.frame(
+    modifier      = modifier,
+    pct_change_0  = round((exp(psi0) - 1) * 100, 3),
+    ci_low_0      = round((exp(ci_low0) - 1) * 100, 3),
+    ci_high_0     = round((exp(ci_high0) - 1) * 100, 3),
+    pct_change_1  = round((exp(psi1) - 1) * 100, 3),
+    ci_low_1      = round((exp(psi1 - 1.96 * se1) - 1) * 100, 3),
+    ci_high_1     = round((exp(psi1 + 1.96 * se1) - 1) * 100, 3),
+    p_interaction = round(p_int, 4)
+  )
+}
+
+# Load results
+wtc_coef <- read.csv(paste0(wd,"/dep_wtc.csv"))
+arr_coef <- read.csv(paste0(wd,"/dep_arr.csv"))
+hor_coef <- read.csv(paste0(wd,"/dep_hor.csv"))
+
+# Load covariance matrices
+covmat_exp <- readRDS(paste0(wd,"/dep_exp911_covmat.rds"))
+covmat_arr <- readRDS(paste0(wd,"/dep_arr_covmat.rds"))
+covmat_hor <- readRDS(paste0(wd,"/dep_hor_covmat.rds"))
+
+results <- bind_rows(
+  make_row_csv("exp911_imp2", wtc_coef, covmat_exp),
+  make_row_csv("arr_9_11_13", arr_coef, covmat_arr),
+  make_row_csv("horror",      hor_coef, covmat_hor)
+)
+
+print(results)
+```
+
