@@ -22,9 +22,7 @@ library(table1)
 
 # working directory for each person working on the code
 ```{r}
-helena = "C:/Users/furmah01/OneDrive - The Mount Sinai Hospital"
-maayan= "C:/Users/yitshm01/OneDrive - The Mount Sinai Hospital/Maayans lab/Pablo"
-wd=helena
+wd = "C:/......"
 ```
 
 # Descriptive prep
@@ -46,7 +44,7 @@ my.render.cat <- function(x) {
 
 1. Diabetes database
 ```{r}
-data = readRDS(paste0(wd, "/WTC new data 2022/Helena -aim 2/generated files/self reported outcomes/diabHTNcad_for_analysis.rds")) %>%
+data = readRDS(paste0(wd, "/diabHTNcad_for_analysis.rds")) %>%
   mutate(year = as.integer(year))
 ```
 
@@ -136,7 +134,7 @@ corr_mix = c('pm','mean_temp',"X1_app", "X2_app", "X3_app", "X4_app", "X5_app")
 
 df_corr = subset(df_diab, select = (corr_mix))
 
-output_file_path <- "C:/Users/furmah01/OneDrive - The Mount Sinai Hospital/WTC new data 2022/Helena -aim 2/Glucose and Diab/american journal of epidemiology/After Review/to send/Final/Figure S1.tiff"
+output_file_path <- "/Figure S1.tiff"
 
 #png(filename = output_file_path, width = 900, height = 800)
 
@@ -169,7 +167,7 @@ iqrs2 <- sapply(var2, function(var) IQR(df_diab[[var]], na.rm = TRUE))
 
 2. WTC exposures
 ```{r}
-wtc_data<-readRDS(paste0(wd,'/WTC new data 2022/processed files/Aim2-Helena/long_term_preapred_full_data_2024-11-22.rds'))
+wtc_data<-readRDS(paste0(wd,'/long_term_preapred_full_data_2024-11-22.rds'))
 
 wtc_data = subset(wtc_data, select = c(ExtractID,Total_hours911_930 , total_days_October_June , injury,Lower_Manhattan911_code,lost, exp911_imp, horror,work))
 
@@ -194,7 +192,7 @@ rm(wtc_data)
 
 3. Glucose database
 ```{r}
-data = readRDS(paste0(wd,"/WTC new data 2022/Helena -aim 2/generated files/Biomarker analysis/biomarkers_for_analysis4.rds"))
+data = readRDS(paste0(wd,"/biomarkers_for_analysis4.rds"))
 data=data[complete.cases(data$glucose),]
 data=subset(data,year >=2003 & year<=2019)
 ```
@@ -412,7 +410,7 @@ df = rbind(a,b)
 
 # Figure 1:
 ```{r}
-tiff("C:/Users/furmah01/OneDrive - The Mount Sinai Hospital/WTC new data 2022/Helena -aim 2/Glucose and Diab/american journal of epidemiology/After Review/to send/Final/Figure1.tiff", units="in", width=6, height=5, res=300)
+tiff("Figure1.tiff", units="in", width=6, height=5, res=300)
 
 ggplot(df) + 
     geom_pointrange(aes(x = exposure, y = Estimate_exp, ymin = lower_exp, ymax = upper_exp,col = factor(outcome)),position=position_dodge(width=0.60))+ geom_hline(aes(yintercept = 0)) + xlab("Exposures") + ylab("% Change & 95% CI") +theme_minimal()+ geom_vline(xintercept = 1.5, linetype="dashed", 
@@ -634,7 +632,7 @@ df$upper_exp2 <- (df$upper_exp - 1) * 100
 
 ```{r}
 # Figure 1:
-tiff("C:/Users/furmah01/OneDrive - The Mount Sinai Hospital/WTC new data 2022/Helena -aim 2/For paper/Figure_gluc_sex.tiff", units="in", width=6, height=5, res=300)
+tiff("/Figure_gluc_sex.tiff", units="in", width=6, height=5, res=300)
 
 ggplot(df) + 
     geom_pointrange(aes(x = exposure, y = Estimate_exp2, ymin = lower_exp2, ymax = upper_exp2,col = factor(outcome)),position=position_dodge(width=0.60))+ geom_hline(aes(yintercept = 0)) + xlab("Exposures") + ylab("% Change & 95% CI") +theme_minimal()+ 

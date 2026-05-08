@@ -16,9 +16,14 @@ library(data.table) ;library(purrr)
 library(dplyr);library(plyr); library(readxl)
 ```
 
+```{r}
+wd = "c/::"
+```
+
+
 # Temperature data. Daily
 ```{r}
-data = readRDS('C:\\Users\\furmah01\\OneDrive - The Mount Sinai Hospital\\Helena\\MSDW PC patients 2011-2023\\generated files\\Temperature and cvd\\Helena_data_Temp_stroke.rds')
+data = readRDS(paste(wd,'/Helena_data_Temp_stroke.rds'))
 
 
 # leave only first row to merge with demographics
@@ -27,7 +32,7 @@ data_t = data %>% group_by(MRN) %>% slice(1)
 
 # demographics
 ```{r}
-df <- read_excel("C:/Users/furmah01/OneDrive - The Mount Sinai Hospital/Original data/MSD-2117.xlsx")
+df <- read_excel(paste(wd,"/MSD-2117.xlsx"))
 
 df$year=format(df$DOB,"%Y")
 df$year=as.numeric(df$year)
@@ -153,7 +158,6 @@ ggplot(a, aes(x=meantemp, y=season, fill=group)) +
 
 # Figure #1 temperature distribution
 ```{r}
-tiff("C:/Users/furmah01/OneDrive - The Mount Sinai Hospital/Helena/exposure data/Temp an MI/results/Fig1_distribution.tif",res=300,width=7,height=10,unit="in")
 
 p1=ggplot(data, aes(x=meantemp)) + geom_density()+ xlab("Mean temperature") + theme_classic()+
 scale_y_continuous(name = "Density", limits = c(0, 0.08))+
@@ -223,7 +227,6 @@ with(a,cbind(allRRfit,allRRlow,allRRhigh)["1",])
 
 # Fig #2 stroke and cumulative response
 ```{r}
-tiff("C:/Users/furmah01/OneDrive - The Mount Sinai Hospital/Helena/exposure data/Temp an MI/results/stroke_comulative.tif",res=300,width=7,height=10,unit="in", compression = "lzw")
 
 par(mfrow=c(4,1))
 
@@ -252,7 +255,6 @@ dev.off()
 
 # Fig #3 stroke lags. 
 ```{r}
-tiff("C:/Users/furmah01/OneDrive - The Mount Sinai Hospital/Helena/exposure data/Temp an MI/results/stroke_lags.tif",res=300,width=7,height=10,unit="in")
 
 par(mfrow=c(4,1))
 
@@ -414,7 +416,7 @@ with(m90,cbind(allRRfit,allRRlow,allRRhigh)["13",])
 # Median max temp 17.7
 # Median min temp 9.15
 # Median duirnal temp 7.99
-tiff("H:/for server/MI_comulative.tif",res=300,width=7,height=10,unit="in")
+tiff(paste(wd,"/MI_comulative.tif",res=300,width=7,height=10,unit="in"))
 
 par(mfrow=c(4,1))
 cppm1 <- crosspred(mi, mod, at=-9:30, cen=13,cumul=FALSE)
@@ -443,7 +445,7 @@ dev.off()
 # figure MI lags
 # additional title lag plots
 ```{r}
-tiff("H:/for server/temp plots/MI_lags_with_title.tif",res=300,width=15,height=15,unit="in")
+tiff(paste(wd,"/MI_lags_with_title.tif",res=300,width=15,height=15,unit="in"))
 
 par(mfrow=c(4,2))
 
@@ -542,7 +544,7 @@ library(readxl)
 library(dplyr)
 
 # Set the directory containing the .xls files
-folder_path <- "C:/Users/furmah01/OneDrive - The Mount Sinai Hospital/Helena/MSDW PC patients 2011-2023/Temperature and CVD/Daily Ozone EPA"  # <-- Replace this with your folder path
+folder_path <- "/Daily Ozone EPA"  # <-- Replace this with your folder path
 
 # Get a list of all .xls files in the folder
 xls_files <- list.files(path = folder_path, pattern = "\\.csv$", full.names = TRUE)
@@ -563,7 +565,7 @@ ozone$year = format(as.Date(ozone$Date, format="%m/%d/%Y"),"%Y")
 
 # read stroke files
 ```{r}
-data = readRDS('C:\\Users\\furmah01\\OneDrive - The Mount Sinai Hospital\\Helena\\MSDW PC patients 2011-2023\\generated files\\Temperature and cvd\\Helena_data_Temp_stroke.rds')
+data = readRDS(paste(wd,'/Helena_data_Temp_stroke.rds'))
 
 mi <- st_as_sf(data, coords = c("coords.x1", "coords.x2"), crs = 4326)
 ```

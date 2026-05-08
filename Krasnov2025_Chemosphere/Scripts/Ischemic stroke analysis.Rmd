@@ -18,10 +18,15 @@ library(corrplot)
 library(tableone)
 ```
 
+```{r}
+wd = "c:/..."
+```
+
+
 # read the two databases
 ```{r}
-EHR2 = readRDS('C:/Users/furmah01/OneDrive - The Mount Sinai Hospital/Helena/MSDW PC patients 2011-2023/generated files/EHR Data-Continuity/EHR2_gap.rds')
-EHR3 = readRDS('C:/Users/furmah01/OneDrive - The Mount Sinai Hospital/Helena/MSDW PC patients 2011-2023/generated files/EHR Data-Continuity/EHR3_last.rds')
+EHR2 = readRDS(paste(wd,'/EHR2_gap.rds'))
+EHR3 = readRDS(aste(wd,'/EHR3_last.rds'))
 
 EHR2=EHR2 %>% mutate(sno = as.numeric(factor(MRN)))
 EHR3=EHR3 %>% mutate(sno = as.numeric(factor(MRN)))
@@ -94,7 +99,7 @@ corr_mix = c("Br",  "Ca", "Cu",  "Fe", "K", "Ni", "Pb",  "Si", "V",   "Zn", "Ec"
 
 df_corr = subset(EHR3, select = (corr_mix))
 
-output_file_path <- "C:/Users/furmah01/OneDrive - The Mount Sinai Hospital/Helena/MSDW PC patients 2011-2023/EHR Data-Continuity/Chemosphere Manuscript/Review/correlation_plot_new.png"
+output_file_path <- "/correlation_plot_new.png"
 png(filename = output_file_path, width = 900, height = 800)
 
 # Rename the columns to 
@@ -118,8 +123,6 @@ CreateTableOne(vars=listvars,data=EHR3)
 
 # Supp figure 1 - nonliear dose response associations for components
 ```{r eval=FALSE, include=FALSE}
-png("C:/Users/furmah01/OneDrive - The Mount Sinai Hospital/Helena/MSDW PC patients 2011-2023/EHR Data-Continuity/Chemosphere Manuscript/Review/spline_components_4factors.png",res=300,width=20,height=10,unit="in")
-
 par(mfrow = c(3,5)) 
 
 for (i in seq_along(mixture)) {
@@ -400,8 +403,7 @@ df =do.call("rbind", list(table_comp,table_comp2, table_results_1,table_results_
 
 df$exposure = ifelse(df$exposure == 'Ec','EC',df$exposure)
 df$exposure = ifelse(df$exposure == 'Oc','OC',df$exposure)
-# save for next rounds
-write.csv(df,'C:/Users/furmah01/OneDrive - The Mount Sinai Hospital/Helena/MSDW PC patients 2011-2023/EHR Data-Continuity/Model_table.csv')
+
 ```
 
 ```{r}
@@ -411,8 +413,6 @@ df$group <- factor(df$exposure,
                       levels = c("Ca", "Cu",  "Fe", "K", "Ni", "Pb",  "Si", "V",   "Zn", "EC",  "NH4", "NO3", "OC","SO4","Biomass Burning","Oil Combustion","Metal Industry", "Other Industry",'Motor Vehicle Resuspension of Dust'),
 labels = c("Ca", "Cu",  "Fe", "K", "Ni", "Pb",  "Si", "V",   "Zn", "EC",  'NH4', 'NO3', "OC",'SO4',"Biomass Burning","Oil Combustion","Metal Industry", "Other Industry",'Motor Vehicle \nResuspension of Dust'))
 
-
-tiff('C:/Users/furmah01/OneDrive - The Mount Sinai Hospital/Helena/MSDW PC patients 2011-2023/EHR Data-Continuity/Comperison_fig4.tiff', width = 12, height = 12, units = "in", res = 300)
 
 # Create the plot
 ggplot(df, aes(x = model2, y = Estimate_exp)) +

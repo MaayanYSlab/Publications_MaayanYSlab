@@ -12,7 +12,7 @@ library(dplyr);library(plyr); library(fst);library(readxl)
 
 #Load exposure file
 ```{r}
-data = readRDS('C:\\Users\\furmah01\\OneDrive - The Mount Sinai Hospital\\Prepared data\\exposures.rds')
+data = readRDS(paste(wd,'/exposures.rds'))
 summary(data$date)
 summary(data$pm25)
 #Event year
@@ -31,10 +31,10 @@ data=subset(data,year>=2010 & year<=2020)
 
 #Link covariates
 
-df_events <- read_excel("C:/Users/furmah01/OneDrive - The Mount Sinai Hospital/Original data/MSD-1332_Final_Resultset.xlsx", sheet = "Primary admissions")
+df_events <- read_excel(paste(wd,"C/MSD-1332_Final_Resultset.xlsx", sheet = "Primary admissions"))
 
 
-df_sociodem = read_excel("C:/Users/furmah01/OneDrive - The Mount Sinai Hospital/Original data/MSD-1332_Final_Resultset.xlsx", sheet = "sociodemogrhic")
+df_sociodem = read_excel(paste(wd,"/MSD-1332_Final_Resultset.xlsx", sheet = "sociodemogrhic"))
 
 df_events = merge(df_events, df_sociodem, by = c("MRN", "ADMISSION_DATE"))
 rm(df_sociodem)
@@ -83,7 +83,7 @@ data3$day = str_remove(data3$day, "^0+")
 # Save for later
 ```{r}
 
-data3 = readRDS('C:\\Users\\furmah01\\OneDrive - The Mount Sinai Hospital\\Prepared data\\Helena_data_Temp_stroke.rds')
+data3 = saveRDS(paste(wd,'/Helena_data_Temp_stroke.rds'))
 ```
 
 

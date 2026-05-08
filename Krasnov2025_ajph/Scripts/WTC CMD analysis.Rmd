@@ -8,6 +8,12 @@ output:
 editor_options: 
   chunk_output_type: console
 ---
+```{r}
+
+wd = "C:/...."
+
+
+```
 
 rm(list=ls())
 ```{r include=FALSE}
@@ -27,7 +33,7 @@ library(table1)
 
 # import the basic dataset for table 1 take first row with first year of inrolment 
 ```{r}
-data<-readRDS('C:\\Users\\furmah01\\OneDrive - The Mount Sinai Hospital\\WTC new data 2022\\processed files\\Aim2-Helena\\long_term_preapred_full_data_2024-11-22.rds')
+data<-readRDS(paste(wd,'\\long_term_preapred_full_data_2024-11-22.rds'))
 
 data=subset(data,year==2003)
 
@@ -138,15 +144,15 @@ table1(~ age + Marital_Stat_Code+ Race4 + edu4 + Gender + bmi  | outcome, data=d
 # 1. add CMD databases
 ```{r}
 # 1. Diabetes
-data_diab<-readRDS('C:\\Users\\furmah01\\OneDrive - The Mount Sinai Hospital\\WTC new data 2022\\Helena - aim 1\\generated files\\data_diab_2024-03-13.rds')
+data_diab<-readRDS(paste (wd,'\\data_diab_2024-03-13.rds'))
 data_diab<-data_diab[!duplicated(data_diab), ]
 
 # 2. HTN
-data_htn<-readRDS('C:\\Users\\furmah01\\OneDrive - The Mount Sinai Hospital\\WTC new data 2022\\Helena - aim 1\\generated files\\data_htn_2024-03-13.rds')
+data_htn<-readRDS(paste (wd,'\\data_htn_2024-03-13.rds'))
 data_htn<-data_htn[!duplicated(data_htn), ]
 
 # 3. CAD
-data_cad<-readRDS('C:\\Users\\furmah01\\OneDrive - The Mount Sinai Hospital\\WTC new data 2022\\Helena - aim 1\\generated files\\data_cad_2024-03-13.rds')
+data_cad<-readRDS(paste (wd,'\\data_cad_2024-03-13.rds'))
 data_cad<-data_cad[!duplicated(data_cad), ]
 ```
 
@@ -230,8 +236,8 @@ tbl_stack(list(fit_Sep,fit_total_days,fit_dust,fit_man,fit_injury,fit_lost,fit_h
 
 # merge trajectory with ses and demographoc cariables
 ```{r}
-gluc = readRDS('C:\\Users\\furmah01\\OneDrive - The Mount Sinai Hospital\\WTC new data 2022\\Helena - aim 1\\generated files\\lcmm_data\\WTC paper\\gluc_beta_lcmm3_byAge75_140.rds')
-sys = readRDS('C:\\Users\\furmah01\\OneDrive - The Mount Sinai Hospital\\WTC new data 2022\\Helena - aim 1\\generated files\\lcmm_data\\WTC paper\\blood_pressure_lcmm2_linear_below130.rds')
+gluc = readRDS(paste(wd,'/gluc_beta_lcmm3_byAge75_140.rds'))
+sys = readRDS(paste(wd,'/blood_pressure_lcmm2_linear_below130.rds'))
 ```
 
 # figure 1:
@@ -292,7 +298,7 @@ p1 = ggplot(sys, aes(x = age, y = Systolic_Pressure, linetype = factor(class,
 
 # relevel thae groups for logistic regression
 ```{r}
-traj_age <-readRDS("C:\\Users\\furmah01\\OneDrive - The Mount Sinai Hospital\\WTC new data 2022\\Helena - aim 1\\generated files\\lcmm_data\\WTC paper\\gluc_beta_lcmm3_byAge75_140.rds")
+traj_age <-readRDS(paste(wd,"/gluc_beta_lcmm3_byAge75_140.rds"))
 traj_age=subset(traj_age,select=c("ExtractID","class","year"))
 traj_age = traj_age %>% group_by(ExtractID) %>% slice(n())
 data_tranj_age<-merge(data, traj_age , by = c('ExtractID'))
@@ -409,7 +415,7 @@ fit_dust <- glm(class2 ~ exp911_imp+ as.factor(Gender) + as.factor(Race4) + as.f
 
 # SBP
 ```{r}
-traj_age <-readRDS("C:\\Users\\furmah01\\OneDrive - The Mount Sinai Hospital\\WTC new data 2022\\Helena - aim 1\\generated files\\lcmm_data\\WTC paper\\blood_pressure_lcmm2_linear_below130.rds")
+traj_age <-readRDS(paste(wd,"/blood_pressure_lcmm2_linear_below130.rds"))
 traj_age=subset(traj_age,select=c("ExtractID","class","year"))
 traj_age = traj_age %>% group_by(ExtractID) %>% slice(n())
 data_tranj_sbp<-merge(data, traj_age , by = c('ExtractID'))
