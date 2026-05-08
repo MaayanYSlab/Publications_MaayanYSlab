@@ -36,8 +36,7 @@ library(tidyr)
 
 # set working direcory
 ```{r}
-#wd = "C:/Users/furmah01/OneDrive - The Mount Sinai Hospital/WTC new data 2022/Frailty/Manuscript/After review/data"
-wd = "C:/Users/yitshm01/OneDrive - The Mount Sinai Hospital/Maayans lab/Pablo/WTC new data 2022/Frailty/Manuscript/After review/data"
+wd = "C:/......"
 ```
 
 # import data
