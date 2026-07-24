@@ -1,0 +1,47 @@
+---
+title: "Untitled"
+output: html_document
+date: "2026-07-24"
+---
+
+```{r include=FALSE}
+# install required pacakges
+install.packages(plyr)
+install.packages(dplyr)
+install.packages(mgcv)
+install.packages(table1)
+install.packages(tableone)
+install.packages(qgcomp)
+install.packages(qgcompint)
+install.packages(lubridate)
+install.packages(ggplot2)
+install.packages(tidyr)
+install.packages(tidyverse)
+install.packages(sf)
+install.packages(patchwork)
+```
+
+
+# run libraries
+```{r include=FALSE}
+library(plyr)
+library(dplyr)
+library(mgcv)
+library(table1)
+library(tableone)
+library(qgcomp)
+library(qgcompint)
+library(lubridate)
+library(ggplot2)
+library(tidyr)
+library(tidyverse)
+library(sf)
+library(patchwork)
+```
+
+#Table S1. Number of deficits (person years) between 2003-2023
+```{r}
+TableS1 = read.csv(paste0(wd,'/deficits.csv'))
+
+TableS1
+```

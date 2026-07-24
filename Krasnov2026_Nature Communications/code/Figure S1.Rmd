@@ -1,0 +1,88 @@
+---
+title: "Untitled"
+output: html_document
+date: "2026-07-24"
+---
+```{r include=FALSE}
+# install required pacakges
+install.packages(plyr)
+install.packages(dplyr)
+install.packages(mgcv)
+install.packages(table1)
+install.packages(tableone)
+install.packages(qgcomp)
+install.packages(qgcompint)
+install.packages(lubridate)
+install.packages(ggplot2)
+install.packages(tidyr)
+install.packages(tidyverse)
+install.packages(sf)
+install.packages(patchwork)
+```
+
+
+# run libraries
+```{r include=FALSE}
+library(plyr)
+library(dplyr)
+library(mgcv)
+library(table1)
+library(tableone)
+library(qgcomp)
+library(qgcompint)
+library(lubridate)
+library(ggplot2)
+library(tidyr)
+library(tidyverse)
+library(sf)
+library(patchwork)
+```
+
+# Figure S1A. Distribution of the responders' monitoring visits
+#Data 'Figure1A.csv' is an aggregate summary of visit counts and frquancies in the cohort. 
+```{r}
+plot_FigureS1A = read.csv(paste0(wd, '/Figure1A.csv'))
+
+ggplot(plot_FigureS1A, aes(x = factor(total_visits))) +
+  geom_col(aes(y = count), fill = "skyblue", color = "grey") +
+  geom_text(aes(y = count, label = label), vjust = -0.5, size = 3) +
+  # cumulative line on secondary axis
+  geom_line(aes(y = cumulative_pct / 100 * max(count), group = 1), 
+            color = "darkred", linewidth = 1) +
+  geom_point(aes(y = cumulative_pct / 100 * max(count)), 
+             color = "darkred", size = 2) +
+  geom_text(aes(y = cumulative_pct / 100 * max(count), label = cum_label), 
+            vjust = -1.4, size = 2.5, color = "black") +
+  scale_y_continuous(
+    name = "Number of responders",
+    sec.axis = sec_axis(~ . / max(plot_FigureS1A$count) * 100, 
+                        name = "Cumulative %")
+  ) +
+  labs(
+    title = "Distribution of study visits per person",
+    x = "Visits Number"
+  ) +
+  theme_minimal() + annotate("text", x = Inf, y = Inf, label = "A", 
+           hjust = 1.5, vjust = 2.5, fontface = "bold", size = 6)
+```
+
+# # Figure S1B showing the distribution of the first year of enrollmen
+```{r}
+plot_FigureS1B = read.csv(paste0(wd,'/Figure1B.csv'))
+
+ggplot(plot_FigureS1B, aes(x = factor(year), y = row_count)) +
+  geom_col(fill = "skyblue", color = "grey") + 
+  geom_text(aes(label = paste0(round(100 * row_count / sum(row_count), 1), "%")),
+            vjust = -0.3, size = 3) +
+  labs(
+    title = "Distribution of the first year of enrollment",
+    x = NULL,
+    y = "Number of responders"
+  ) +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1)
+  ) +
+  annotate("text", x = Inf, y = Inf, label = "B", 
+           hjust = 1.5, vjust = 2.5, fontface = "bold", size = 6)
+```

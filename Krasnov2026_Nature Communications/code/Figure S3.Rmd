@@ -1,0 +1,65 @@
+---
+title: "Untitled"
+output: html_document
+date: "2026-07-24"
+---
+
+```{r include=FALSE}
+# install required pacakges
+install.packages('plyr')
+install.packages('dplyr')
+install.packages('ggplot2')
+install.packages('tidyr')
+install.packages('tidyverse')
+install.packages('sf')
+install.packages('patchwork')
+```
+
+
+# run libraries
+```{r include=FALSE}
+library(plyr)
+library(dplyr)
+library(ggplot2)
+library(tidyr)
+library(tidyverse)
+library(sf)
+library(patchwork)
+```
+
+#Figure S3. Distribution of the responders' (person years) locations
+```{r}
+plot_FigureS3 = st_read(paste0(wd,'/FigureS3.shp'))
+
+my_breaks <- seq(0, max(plot_FigureS3$pnt_cnt, na.rm = TRUE), by = 10)
+
+library(ggplot2)
+
+p <- ggplot(data = plot_FigureS3) +
+  # 1. Map the fill to your variable
+  geom_sf(aes(fill = pnt_cnt), colour = NA) + 
+  
+  # 2. Use the mako scale
+  scale_fill_viridis_c(
+    option = "mako", 
+    begin = 0.4, 
+    direction = -1,
+    guide = guide_colorbar(
+      title.position = "top",
+      barwidth = unit(0.5, "cm"),
+      barheight = unit(4, "cm")
+    )
+  ) +
+  
+  # 3. Apply theme and fix legend
+  theme_void() + 
+  labs(fill = "Person Years") +
+  theme(
+    legend.position = "right", # Changed from "none" to "right"
+    legend.title = element_text(size = 10, face = "bold"),
+    plot.background = element_rect(colour = "grey80", fill = NA, linewidth = 1),
+    plot.margin = margin(10, 10, 10, 10) # Adds a little breathing room
+  )
+
+print(p)
+```
