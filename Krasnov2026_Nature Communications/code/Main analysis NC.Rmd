@@ -84,19 +84,6 @@ data = read.csv(paste0(wd, '/Sim_Data.csv'))
 head(data)
 ```
 
-# add summer and winter exposure for later TableS6
-```{r}
-temp = read.csv(paste0(wd, '/Sim_Summer_temp.csv'))
-
-data = cbind(data, temp)
-
-# clean
-data$X=NULL
-
-head(data)
-
-```
-
 # Descriptive prep function: used to create Table 1
 ```{r}
 # change decimal point in table
@@ -498,16 +485,7 @@ grid.arrange(p,p1,p2,ncol=2)
 
 ```
 
-# to calculate the % change in outcome 
-```{r}
-(exp(Estimate)-1)*100
-(exp(Lower CI)-1)*100
-(exp(Upper CI)-1)*100
-```
-
-
 # Table 4. Effect modification is in code Table 4
-
 
 #######################################################################################
 #######################################secondary analysis
@@ -1024,3 +1002,4 @@ summary(dep_500)
 
 ```
 
+# Table S6. The association between environmental exposures and Frailty, PTSD, and depression scores using different temperature metrices. In separate data source file
