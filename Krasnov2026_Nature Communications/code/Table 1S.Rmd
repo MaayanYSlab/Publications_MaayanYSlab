@@ -39,6 +39,12 @@ library(sf)
 library(patchwork)
 ```
 
+# Set working direcory
+```{r}
+wd = "C:/......"
+
+```
+
 #Table S1. Number of deficits (person years) between 2003-2023
 ```{r}
 TableS1 = read.csv(paste0(wd,'/deficits.csv'))

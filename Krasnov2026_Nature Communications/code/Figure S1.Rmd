@@ -38,6 +38,12 @@ library(sf)
 library(patchwork)
 ```
 
+# Set working direcory
+```{r}
+wd = "C:/......"
+
+```
+
 # Figure S1A. Distribution of the responders' monitoring visits
 #Data 'Figure1A.csv' is an aggregate summary of visit counts and frquancies in the cohort. 
 ```{r}
