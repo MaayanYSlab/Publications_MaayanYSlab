@@ -1,0 +1,231 @@
+---
+title: "Untitled"
+output: html_document
+date: "2026-07-24"
+---
+```{r include=FALSE}
+# install required pacakges
+install.packages(plyr)
+install.packages(dplyr)
+install.packages(mgcv)
+install.packages(table1)
+install.packages(tableone)
+install.packages(qgcomp)
+install.packages(qgcompint)
+install.packages(lubridate)
+install.packages(ggplot2)
+install.packages(tidyr)
+install.packages(tidyverse)
+install.packages(sf)
+install.packages(patchwork)
+```
+
+
+# run libraries
+```{r include=FALSE}
+library(plyr)
+library(dplyr)
+library(mgcv)
+library(table1)
+library(tableone)
+library(qgcomp)
+library(qgcompint)
+library(lubridate)
+library(ggplot2)
+library(tidyr)
+library(tidyverse)
+library(sf)
+library(patchwork)
+```
+
+
+save the data to a specific location
+
+# Set working direcory
+```{r}
+wd = "C:/......"
+
+```
+
+# Import data
+
+List of variables:
+# year - monitoring year
+# Gender- Male/Female
+# Race4- Race in 4 categories
+# edu4 -  Education level in 4 categories
+# work2 - Occupation on 9/11
+# exp911_imp2 - WTC exposure index (High/Very High=1/ Low/Intermediate=0)
+# arr_9_11_13 - Arrival date (Arrived on 9/11-9/14 =1/ Arrived after 9/14 =0)
+# horror - Witnessing horror (yes=1/ No=0)
+# smoke2 -  Smoking status
+# age - Age at monitoring visit
+# non_na_count - Number of counted deficits
+# pct_black - % Black population 
+# pct_poverty - % under the poverty line
+# pct_NoHS - % with no high school education
+# MEDHH - Median household income 
+# pm - PM2.5 (µg m-3)
+# mean_temp - Mean temperature (° C)
+# Mean_GVI_300 - Green View Index inside 300m buffer
+# Mean_GVI_500 - Green View Index inside 500m buffer
+# frailty.sum - Frailty index is calculated using 30 items that are collected during each monitoring visit, including deficits such as diabetes, fair/poor self-rated health, difficulty climbing several flights of stairs, abnormal heart examination, and self-reported mental health conditions. Each item is coded as a binary value where a response of Fair/Poor is considered as a “deficit” (and assigned a score of 1), and a response of Excellent/Very Good/Good is assigned a score of 0 (i.e., not a deficit). 
+# PTSD - PTSD score based on the DSM-IV measurement 
+# depression - Depression score based on PHQ9.
+
+```{r}
+data = read.csv(paste0(wd, '/Sim_Data.csv'))
+head(data)
+```
+
+# Subset data for frailty analysis. The population for the frailty analysis is restricted to rows with at least 27 deficits. 
+#Rows with less than 27 deficite are considered missing due to insufficient data to calculate the frailty index.  
+```{r}
+data_index= subset(data, non_na_count >=27)
+```
+
+# Remove outliers from the datasets 
+# df_trimmed = The data for the frailty analysis
+# df_trimmed2 = The data for the mental illness analyses
+```{r}
+#Function to remove lower and upper 0.5% in the exposure distributions to avoid bias due to extreme values. 
+trim_df <- function(data, vars, p = 0.005) {
+  # Loop over variables and compute quantiles
+  for (v in vars) {
+    lower <- quantile(data[[v]], p, na.rm = TRUE)
+    upper <- quantile(data[[v]], 1 - p, na.rm = TRUE)
+    
+    # Keep only rows within range
+    data <- data[data[[v]] >= lower & data[[v]] <= upper, ]
+  }
+  return(data)
+}
+
+# Apply to temperature and PM exposures
+df_trimmed <- trim_df(data_index, vars = c('pm','mean_temp'))
+
+df_trimmed <- df_trimmed %>%
+  filter(!if_all(everything(), is.na))
+
+df_trimmed2 <- trim_df(data, vars = c('pm','mean_temp'))
+
+df_trimmed2 <- df_trimmed2 %>%
+  filter(!if_all(everything(), is.na))
+```
+
+# Figure S4: outcome distributions desriptives 
+# Frailty
+```{r}
+# Create dataframe
+df <- data.frame(frailty = data_index$frailty.sum)
+
+# Mean & SD
+mu <- mean(df$frailty, na.rm = TRUE)
+sigma <- sd(df$frailty, na.rm = TRUE)
+
+f = ggplot(df, aes(x = frailty)) +
+  geom_histogram(aes(y = ..density..),
+                 bins = 30,
+                 fill = "skyblue",
+                 color = "white",
+                 alpha = 0.9) +
+  stat_function(fun = dnorm,
+                args = list(mean = mu, sd = sigma),
+                color = "darkred",
+                linewidth = 1.2) +
+  theme_minimal(base_size = 14) +
+  labs(
+    x = "Frailty Index",
+    y = "Density"
+  ) +
+  theme(
+    plot.title = element_text(face = "bold", hjust = 0.5),
+    panel.grid.minor = element_blank()
+  )
+f
+```
+
+# PTSD
+```{r}
+# Create dataframe
+df2 <- data.frame(ptsd_hist = data$PTSD)
+
+# Mean & SD
+mu <- mean(df2$ptsd_hist, na.rm = TRUE)
+sigma <- sd(df2$ptsd_hist, na.rm = TRUE)
+
+f1 = ggplot(df2, aes(x = ptsd_hist)) +
+  geom_histogram(aes(y = ..density..),
+                 bins = 30,
+                 fill = "skyblue",
+                 color = "white",
+                 alpha = 0.9) +
+  stat_function(fun = dnorm,
+                args = list(mean = mu, sd = sigma),
+                color = "darkred",
+                linewidth = 1.2) +
+  theme_minimal(base_size = 14) +
+  labs(
+    x = "PTSD Score",
+    y = "Density"
+  ) +
+  theme(
+    plot.title = element_text(face = "bold", hjust = 0.5),
+    panel.grid.minor = element_blank()
+  )
+f1
+```
+
+# Depression
+```{r}
+# Create dataframe
+df3 <- data.frame(dep_hist = data$depression)
+
+# Mean & SD
+mu <- mean(df3$dep_hist, na.rm = TRUE)
+sigma <- sd(df3$dep_hist, na.rm = TRUE)
+
+f2 = ggplot(df3, aes(x = dep_hist)) +
+  geom_histogram(aes(y = ..density..),
+                 bins = 30,
+                 fill = "skyblue",
+                 color = "white",
+                 alpha = 0.9) +
+  stat_function(fun = dnorm,
+                args = list(mean = mu, sd = sigma),
+                color = "darkred",
+                linewidth = 1.2) +
+  theme_minimal(base_size = 14) +
+  labs(
+    x = "Depression Score",
+    y = "Density"
+  ) +
+  theme(
+    plot.title = element_text(face = "bold", hjust = 0.5),
+    panel.grid.minor = element_blank()
+  )
+f2
+```
+
+# combine plots into one
+```{r}
+f  <- f  +  theme(
+  plot.title = element_text(size = 18),
+  axis.title = element_text(size = 20),
+  axis.text  = element_text(size = 18)
+)
+f1 <- f1 + theme(
+  plot.title = element_text(size = 18),
+  axis.title = element_text(size = 20),
+  axis.text  = element_text(size = 18)
+)
+f2 <- f2 + theme(
+  plot.title = element_text(size = 18),
+  axis.title = element_text(size = 20),
+  axis.text  = element_text(size = 18)
+)
+
+combined_plot <- f + f1 + f2 
+
+combined_plot
+```

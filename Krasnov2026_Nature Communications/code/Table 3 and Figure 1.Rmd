@@ -1,0 +1,415 @@
+---
+title: "Analysis code"
+author: "Helena Krasnov"
+date: "2026-05-01"
+output: html_document
+---
+
+```{r include=FALSE}
+# install required pacakges
+install.packages(plyr)
+install.packages(dplyr)
+install.packages(mgcv)
+install.packages(table1)
+install.packages(tableone)
+install.packages(qgcomp)
+install.packages(qgcompint)
+install.packages(lubridate)
+install.packages(ggplot2)
+install.packages(tidyr)
+install.packages(tidyverse)
+install.packages(sf)
+install.packages(patchwork)
+```
+
+
+# run libraries
+```{r include=FALSE}
+library(plyr)
+library(dplyr)
+library(mgcv)
+library(table1)
+library(tableone)
+library(qgcomp)
+library(qgcompint)
+library(lubridate)
+library(ggplot2)
+library(tidyr)
+library(tidyverse)
+library(sf)
+library(patchwork)
+```
+
+
+save the data to a specific location
+
+# Set working direcory
+```{r}
+wd = "C:/......"
+
+```
+
+# Import data
+
+List of variables:
+# year - monitoring year
+# Gender- Male/Female
+# Race4- Race in 4 categories
+# edu4 -  Education level in 4 categories
+# work2 - Occupation on 9/11
+# exp911_imp2 - WTC exposure index (High/Very High=1/ Low/Intermediate=0)
+# arr_9_11_13 - Arrival date (Arrived on 9/11-9/14 =1/ Arrived after 9/14 =0)
+# horror - Witnessing horror (yes=1/ No=0)
+# smoke2 -  Smoking status
+# age - Age at monitoring visit
+# non_na_count - Number of counted deficits
+# pct_black - % Black population 
+# pct_poverty - % under the poverty line
+# pct_NoHS - % with no high school education
+# MEDHH - Median household income 
+# pm - PM2.5 (µg m-3)
+# mean_temp - Mean temperature (° C)
+# Mean_GVI_300 - Green View Index inside 300m buffer
+# Mean_GVI_500 - Green View Index inside 500m buffer
+# frailty.sum - Frailty index is calculated using 30 items that are collected during each monitoring visit, including deficits such as diabetes, fair/poor self-rated health, difficulty climbing several flights of stairs, abnormal heart examination, and self-reported mental health conditions. Each item is coded as a binary value where a response of Fair/Poor is considered as a “deficit” (and assigned a score of 1), and a response of Excellent/Very Good/Good is assigned a score of 0 (i.e., not a deficit). 
+# PTSD - PTSD score based on the DSM-IV measurement 
+# depression - Depression score based on PHQ9.
+
+```{r}
+data = read.csv(paste0(wd, '/Sim_Data.csv'))
+head(data)
+```
+
+# Subset data for frailty analysis. The population for the frailty analysis is restricted to rows with at least 27 deficits. 
+#Rows with less than 27 deficite are considered missing due to insufficient data to calculate the frailty index.  
+```{r}
+data_index= subset(data, non_na_count >=27)
+```
+
+# Remove outliers from the datasets 
+# df_trimmed = The data for the frailty analysis
+# df_trimmed2 = The data for the mental illness analyses
+```{r}
+#Function to remove lower and upper 0.5% in the exposure distributions to avoid bias due to extreme values. 
+trim_df <- function(data, vars, p = 0.005) {
+  # Loop over variables and compute quantiles
+  for (v in vars) {
+    lower <- quantile(data[[v]], p, na.rm = TRUE)
+    upper <- quantile(data[[v]], 1 - p, na.rm = TRUE)
+    
+    # Keep only rows within range
+    data <- data[data[[v]] >= lower & data[[v]] <= upper, ]
+  }
+  return(data)
+}
+
+# Apply to temperature and PM exposures
+df_trimmed <- trim_df(data_index, vars = c('pm','mean_temp'))
+
+df_trimmed <- df_trimmed %>%
+  filter(!if_all(everything(), is.na))
+
+df_trimmed2 <- trim_df(data, vars = c('pm','mean_temp'))
+
+df_trimmed2 <- df_trimmed2 %>%
+  filter(!if_all(everything(), is.na))
+```
+
+# Compute IQR for the main exposures 
+```{r}
+var <- c("pm", "mean_temp", "Mean_GVI_300")
+
+iqrs <- sapply(var, function(var) IQR(data[[var]], na.rm = TRUE))
+```
+
+# Table 3. The association between environmental exposures and Frailty, PTSD, and Depression scores.
+# Model 1: Frialty analysis
+```{r}
+frail_mod <- bam(frailty.sum~ pm +mean_temp+ Mean_GVI_300 +age+s(year,bs='ps') + as.factor(Gender) + as.factor(Race4) + as.factor(edu4)+ pct_black + MEDHH + pct_poverty+pct_NoHS+as.factor(work2)+ as.factor(smoke2)+s(RunningID,bs='re'),data=df_trimmed, family = quasipoisson(link = log),offset = log(non_na_count))
+
+    pm=summary(frail_mod)$p.table
+    pm<-as.data.frame(pm,keep.rownames = TRUE)[] # Format as datatable
+    table_pm=pm[2:4,]
+    
+    # get upper and lower bound
+    table_pm$lower = table_pm$Estimate - qnorm(0.975) * table_pm$`Std. Error`
+    table_pm$upper = table_pm$Estimate + qnorm(0.975) * table_pm$`Std. Error`
+    table_pm = table_pm[,c(1,5:6) ]
+
+    # PM row
+    table_pm$Estimate_exp <- (exp(table_pm$Estimate*iqrs)-1)*100
+    table_pm$lower_exp <- (exp(table_pm$lower*iqrs)-1)*100
+    table_pm$upper_exp <- (exp(table_pm$upper*iqrs)-1)*100
+    
+  # Round values 
+  table_pm$Estimate_exp <- round(table_pm$Estimate_exp, 3)
+  table_pm$lower_exp <- round(table_pm$lower_exp, 3)
+  table_pm$upper_exp <- round(table_pm$upper_exp, 3)
+  table_pm$complete <- paste(table_pm$Estimate_exp, "(", table_pm$lower_exp, ";", table_pm$upper_exp, ")")
+  table_pm[, 7, drop = FALSE]
+```
+
+# Table 3. The association between environmental exposures and Frailty, PTSD, and Depression scores.
+# Model 2: PTSD analysis
+```{r}
+#Outcome model
+ptsd_mod <- bam(as.numeric(PTSD)~ pm +mean_temp+  Mean_GVI_300  +age+s(year,bs='ps') + as.factor(Gender) + as.factor(Race4) + as.factor(edu4)+ pct_black + MEDHH + pct_poverty+pct_NoHS+as.factor(work2)+ as.factor(smoke2)+s(RunningID,bs='re'),family = quasipoisson(link = log), data=df_trimmed2)
+
+    pm=summary(ptsd_mod)$p.table
+    pm<-as.data.frame(pm,keep.rownames = TRUE)[] # Format as datatable
+    table_pm=pm[2:4,]
+    
+    # get upper and lower bound
+    table_pm$lower = table_pm$Estimate - qnorm(0.975) * table_pm$`Std. Error`
+    table_pm$upper = table_pm$Estimate + qnorm(0.975) * table_pm$`Std. Error`
+    table_pm = table_pm[,c(1,5:6) ]
+
+    # PM row
+    table_pm$Estimate_exp <- (exp(table_pm$Estimate*iqrs)-1)*100
+    table_pm$lower_exp <- (exp(table_pm$lower*iqrs)-1)*100
+    table_pm$upper_exp <- (exp(table_pm$upper*iqrs)-1)*100
+    
+  # Round values 
+  table_pm$Estimate_exp <- round(table_pm$Estimate_exp, 3)
+  table_pm$lower_exp <- round(table_pm$lower_exp, 3)
+  table_pm$upper_exp <- round(table_pm$upper_exp, 3)
+  table_pm$complete <- paste(table_pm$Estimate_exp, "(", table_pm$lower_exp, ";", table_pm$upper_exp, ")")
+  table_pm[, 7, drop = FALSE]
+
+```
+
+# Table 3. The association between environmental exposures and Frailty, PTSD, and Depression scores.
+# Model 3 - Depression
+```{r}
+PHQ9_mod <- bam(as.numeric(depression)~ pm +mean_temp+  Mean_GVI_300  +age+s(year,bs='ps') + as.factor(Gender) + as.factor(Race4) + as.factor(edu4)+ pct_black + MEDHH + pct_poverty+pct_NoHS+as.factor(work2)+ as.factor(smoke2)+s(RunningID,bs='re'),family = quasipoisson(link = log),data=df_trimmed2) 
+
+    pm=summary(PHQ9_mod)$p.table
+    pm<-as.data.frame(pm,keep.rownames = TRUE)[] # Format as datatable
+    table_pm=pm[2:4,]
+    
+    table_pm$lower = table_pm$Estimate - qnorm(0.975) * table_pm$`Std. Error`
+    table_pm$upper = table_pm$Estimate + qnorm(0.975) * table_pm$`Std. Error`
+    table_pm = table_pm[,c(1,5:6) ]
+
+    # PM row
+    table_pm$Estimate_exp <- (exp(table_pm$Estimate*iqrs)-1)*100
+    table_pm$lower_exp <- (exp(table_pm$lower*iqrs)-1)*100
+    table_pm$upper_exp <- (exp(table_pm$upper*iqrs)-1)*100
+    
+  # Round values 
+  table_pm$Estimate_exp <- round(table_pm$Estimate_exp, 3)
+  table_pm$lower_exp <- round(table_pm$lower_exp, 3)
+  table_pm$upper_exp <- round(table_pm$upper_exp, 3)
+  table_pm$complete <- paste(table_pm$Estimate_exp, "(", table_pm$lower_exp, ";", table_pm$upper_exp, ")")
+  table_pm[, 7, drop = FALSE]
+
+```
+
+# Mixture analysis # Table 3 and Figure 1
+```{r}
+mixture =  c("pm", "mean_temp", 'Mean_GVI_300')
+```
+
+# Frailty table 3
+```{r}
+# Outcome model for frailty
+mod_ipw = qgcomp.noboot(frailty.sum ~  
+                      pm +  Mean_GVI_300 +mean_temp +age+as.factor(year) + as.factor(work2)+ as.factor(Race4) + as.factor(Gender)+ as.factor(edu4)+ pct_black + MEDHH +pct_poverty+pct_NoHS+ as.factor(smoke2)+offset(log(non_na_count)),id = df_trimmed$ExtractID,bayes = TRUE, expnms = mixture, data=df_trimmed ,q=10, family=quasipoisson(link = "log"))
+
+summary(mod_ipw)
+```
+
+# Frailty Figure 1
+```{r}
+# create plot Figure 1
+# --- Extract weights ---
+pos_df <- as.data.frame(mod_ipw$pos.weights)
+neg_df <- as.data.frame(mod_ipw$neg.weights)
+
+pos_df <- tibble(variable = rownames(pos_df), weight = pos_df[[1]], direction = "Positive")
+neg_df <- tibble(variable = rownames(neg_df), weight = -neg_df[[1]], direction = "Negative")  # flip sign
+
+# Combine and clean
+weights_df <- bind_rows(pos_df, neg_df) %>%
+    filter(weight != 0)
+
+# --- Clean labels (with math formatting) ---
+weights_df$variable_label <- recode(weights_df$variable,
+                                    "pm" = "PM[2.5]~'(μg/m'^3*')'",
+                                    "mean_temp" = "'Mean Temperature (°C)'",
+                                    "Mean_GVI_300" = "'Green View Index (300 m)'"
+)
+
+# --- Order so PM2.5 appears at TOP after coord_flip() ---
+weights_df$variable_label <- factor(
+    weights_df$variable_label,
+    levels = rev(c(  # reverse order for top-down display
+        "PM[2.5]~'(μg/m'^3*')'",
+        "'Mean Temperature (°C)'",
+        "'Green View Index (300 m)'"
+    ))
+)
+
+# --- Plot ---
+p <- ggplot(weights_df, aes(x = variable_label, y = weight, fill = direction)) +
+    geom_bar(stat = "identity", color = "black", width = 0.75, alpha = 0.9) +
+    coord_flip() +
+    geom_hline(yintercept = 0, color = "gray40", linewidth = 0.6) +
+    scale_fill_manual(values = c("Positive" = "#4C566A", "Negative" = "#A7ADBA")) +
+    theme_minimal(base_size = 14) +
+    labs(
+        title = "Frailty Index",
+        x = NULL,
+        y = "Weight",
+        #fill = "Direction"
+    ) +
+    theme(
+        plot.title = element_text(face = "bold", size = 15, hjust = 0.5),
+        panel.grid.major.y = element_blank(),
+        legend.position = "none"
+    ) +
+    scale_x_discrete(labels = function(x) parse(text = x))
+```
+
+# Mixture analysis: PTSD # Table 3
+```{r}
+# --- Run outcome model ---
+mix_ptsd = qgcomp.noboot(
+    as.numeric(PTSD) ~  
+        pm + Mean_GVI_300 + mean_temp + age + as.factor(year) +
+        as.factor(Race4) + as.factor(edu4) + pct_black + MEDHH +
+        pct_poverty + pct_NoHS + as.factor(work2) + as.factor(smoke2)+ as.factor(Gender),
+    id = df_trimmed2$ExtractID,
+    bayes = TRUE,
+    expnms = mixture,
+    data = df_trimmed2,
+    q = 10,
+    family = quasipoisson(link = "log"))
+
+summary(mix_ptsd)
+```
+
+# PTSD Figure 1
+```{r}
+# Figure 1
+# --- Extract weights ---
+pos_df <- as.data.frame(mix_ptsd$pos.weights)
+neg_df <- as.data.frame(mix_ptsd$neg.weights)
+
+pos_df <- tibble(variable = rownames(pos_df), weight = pos_df[[1]], direction = "Positive")
+neg_df <- tibble(variable = rownames(neg_df), weight = -neg_df[[1]], direction = "Negative")  # flip sign
+
+# Combine and clean
+weights_df <- bind_rows(pos_df, neg_df) %>%
+    filter(weight != 0)
+
+# --- Clean labels (with math formatting) ---
+weights_df$variable_label <- recode(weights_df$variable,
+                                    "pm" = "PM[2.5]~'(μg/m'^3*')'",
+                                    "mean_temp" = "'Mean Temperature (°C)'",
+                                    "Mean_GVI_300" = "'Green View Index (300 m)'"
+)
+
+# --- Order so PM2.5 appears at TOP after coord_flip() ---
+weights_df$variable_label <- factor(
+    weights_df$variable_label,
+    levels = rev(c(  # reverse order for top-down display
+        "PM[2.5]~'(μg/m'^3*')'",
+        "'Mean Temperature (°C)'",
+        "'Green View Index (300 m)'"
+    ))
+)
+
+# --- Plot ---
+p1 <- ggplot(weights_df, aes(x = variable_label, y = weight, fill = direction)) +
+    geom_bar(stat = "identity", color = "black", width = 0.75, alpha = 0.9) +
+    coord_flip() +
+    geom_hline(yintercept = 0, color = "gray40", linewidth = 0.6) +
+    scale_fill_manual(values = c("Positive" = "#4C566A", "Negative" = "#A7ADBA")) +
+    theme_minimal(base_size = 14) +
+    labs(
+        title = "PTSD",
+        x = NULL,
+        y = "Weight",
+        fill = "Direction"
+    ) +
+    theme(
+        plot.title = element_text(face = "bold", size = 15, hjust = 0.5),
+        panel.grid.major.y = element_blank(),
+        legend.position = "bottom"
+    ) +
+    scale_x_discrete(labels = function(x) parse(text = x))
+
+```
+
+
+# Mixture analysis: Depression # Table 3
+
+```{r}
+#Outcome model
+mix_dep = qgcomp.noboot(as.numeric(depression) ~  
+                      pm +  Mean_GVI_300 +mean_temp +age+as.factor(year) +  as.factor(Race4) + as.factor(edu4)+ pct_black + MEDHH + as.factor(Gender)+ pct_poverty+pct_NoHS+as.factor(work2)+as.factor(smoke2),id = df_trimmed2$ExtractID,
+                      bayes = TRUE, expnms = mixture, data=df_trimmed2, q=10, family=quasipoisson(link = "log"))
+
+summary(mix_dep)
+```
+
+# Depression Figure 1
+```{r}
+
+# --- Extract weights ---
+pos_df <- as.data.frame(mix_dep$pos.weights)
+neg_df <- as.data.frame(mix_dep$neg.weights)
+
+pos_df <- tibble(variable = rownames(pos_df), weight = pos_df[[1]], direction = "Positive")
+neg_df <- tibble(variable = rownames(neg_df), weight = -neg_df[[1]], direction = "Negative")  # flip sign
+
+# Combine and clean
+weights_df <- bind_rows(pos_df, neg_df) %>%
+    filter(weight != 0)
+
+# --- Clean labels (with math formatting) ---
+weights_df$variable_label <- recode(weights_df$variable,
+                                    "pm" = "PM[2.5]~'(μg/m'^3*')'",
+                                    "mean_temp" = "'Mean Temperature (°C)'",
+                                    "Mean_GVI_300" = "'Green View Index (300 m)'"
+)
+
+# --- Order so PM2.5 appears at TOP after coord_flip() ---
+weights_df$variable_label <- factor(
+    weights_df$variable_label,
+    levels = rev(c(  # reverse order for top-down display
+        "PM[2.5]~'(μg/m'^3*')'",
+        "'Mean Temperature (°C)'",
+        "'Green View Index (300 m)'"
+    ))
+)
+
+# --- Plot ---
+p2 <- ggplot(weights_df, aes(x = variable_label, y = weight, fill = direction)) +
+    geom_bar(stat = "identity", color = "black", width = 0.75, alpha = 0.9) +
+    coord_flip() +
+    geom_hline(yintercept = 0, color = "gray40", linewidth = 0.6) +
+    scale_fill_manual(values = c("Positive" = "#4C566A", "Negative" = "#A7ADBA")) +
+    theme_minimal(base_size = 14) +
+    labs(
+        title = "Depression",
+        x = NULL,
+        y = "Weight",
+        fill = "Direction"
+    ) +
+    theme(
+        plot.title = element_text(face = "bold", size = 15, hjust = 0.5),
+        panel.grid.major.y = element_blank(),
+        legend.position = "none"
+    ) +
+    scale_x_discrete(labels = function(x) parse(text = x))
+```
+
+# merge plots -Figure 1
+```{r}
+library(gridExtra)
+
+grid.arrange(p,p1,p2,ncol=2)
+
+```

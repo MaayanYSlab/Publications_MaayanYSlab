@@ -1,0 +1,149 @@
+---
+title: "Untitled"
+output: html_document
+date: "2026-07-24"
+---
+
+This code represents the original analytic workflow used in the study. Since the original data cannot be shared due to data-use and confidentiality restrictions, we created a simulated dataset to demonstrate code reproducibility and analytic procedures. As a result, the outputs generated from the simulated data differ from the results presented in the manuscript.
+
+The simulation data is located in the zip file attached to this code
+
+```{r include=FALSE}
+# install required pacakges
+install.packages(plyr)
+install.packages(dplyr)
+install.packages(mgcv)
+install.packages(table1)
+install.packages(tableone)
+install.packages(qgcomp)
+install.packages(qgcompint)
+install.packages(lubridate)
+install.packages(ggplot2)
+install.packages(tidyr)
+install.packages(tidyverse)
+install.packages(sf)
+install.packages(patchwork)
+```
+
+
+# run libraries
+```{r include=FALSE}
+library(plyr)
+library(dplyr)
+library(mgcv)
+library(table1)
+library(tableone)
+library(qgcomp)
+library(qgcompint)
+library(lubridate)
+library(ggplot2)
+library(tidyr)
+library(tidyverse)
+library(sf)
+library(patchwork)
+```
+
+
+# Set working direcory
+```{r}
+wd = "C:/......"
+
+```
+
+# Import data
+
+List of variables:
+# year - monitoring year
+# Gender- Male/Female
+# Race4- Race in 4 categories
+# edu4 -  Education level in 4 categories
+# work2 - Occupation on 9/11
+# exp911_imp2 - WTC exposure index (High/Very High=1/ Low/Intermediate=0)
+# arr_9_11_13 - Arrival date (Arrived on 9/11-9/14 =1/ Arrived after 9/14 =0)
+# horror - Witnessing horror (yes=1/ No=0)
+# smoke2 -  Smoking status
+# age - Age at monitoring visit
+# non_na_count - Number of counted deficits
+# pct_black - % Black population 
+# pct_poverty - % under the poverty line
+# pct_NoHS - % with no high school education
+# MEDHH - Median household income 
+# pm - PM2.5 (µg m-3)
+# mean_temp - Mean temperature (° C)
+# Mean_GVI_300 - Green View Index inside 300m buffer
+# Mean_GVI_500 - Green View Index inside 500m buffer
+# frailty.sum - Frailty index is calculated using 30 items that are collected during each monitoring visit, including deficits such as diabetes, fair/poor self-rated health, difficulty climbing several flights of stairs, abnormal heart examination, and self-reported mental health conditions. Each item is coded as a binary value where a response of Fair/Poor is considered as a “deficit” (and assigned a score of 1), and a response of Excellent/Very Good/Good is assigned a score of 0 (i.e., not a deficit). 
+# PTSD - PTSD score based on the DSM-IV measurement 
+# depression - Depression score based on PHQ9.
+
+```{r}
+data = read.csv(paste0(wd, '/Sim_Data.csv'))
+head(data)
+```
+
+# Descriptive prep function: used to create Table 1
+```{r}
+# change decimal point in table
+my.render.cont <- function(x) {
+    with(stats.default(x), 
+         c("",
+          "Mean (SD)" = sprintf("%s (%s)",
+                                round_pad(MEAN, 2),
+                                round_pad(SD, 2))))
+}
+
+my.render.cat <- function(x) { 
+  sub('.', '.', c("", sapply(stats.default(x), 
+  function(y) with(y, sprintf("%d (%0.2f %%)", FREQ, PCT)))), fixed = TRUE) 
+}
+
+# 1. Define the missing value renderer to match your style
+my.render.miss <- function(x, ...) {
+  with(stats.default(x), 
+       c("", "Missing" = sprintf("%d (%0.2f %%)", NMISS, PCTMISS)))
+}
+```
+
+## Table 1. Population characteristics at cohort entry (N = 18,734), 2003-2023
+```{r}
+m2 <-data %>% group_by(RunningID) %>% filter(row_number()==1)
+
+m2$outcome = 'Descriptive Statistics'
+
+table1(~ age + as.factor(Race4) + as.factor(edu4) + as.factor(Gender) + 
+           as.factor(smoke2) + as.factor(work2) + MEDHH + pct_black + 
+           pct_poverty + pct_NoHS | outcome, 
+       data = m2,
+       overall = FALSE,
+       render.continuous = my.render.cont, 
+       render.categorical = my.render.cat,
+       render.missing = render.missing.default)
+```
+
+# Table 2. Summary statistics of annual exposures and modifiers
+```{r}
+# Create mean continuous variables 
+tab <- data %>%
+    group_by(RunningID) %>%
+    summarise(
+        pm = mean(pm, na.rm = TRUE),
+        mean_temp = mean(mean_temp, na.rm = TRUE),
+        Mean_GVI_300 = mean(Mean_GVI_300, na.rm = TRUE),
+        # categorical variables just take first (they don't change anyway)
+        exp911_imp2 = first(exp911_imp2),
+        arr_9_11_13 = first(arr_9_11_13),
+        horror = first(horror)
+    )
+
+# Define variables
+listVars <- c('pm','mean_temp','Mean_GVI_300','exp911_imp2','arr_9_11_13','horror')
+catVars  <- c('exp911_imp2','arr_9_11_13','horror')
+
+# Create Table 2
+table2 <- CreateTableOne(vars = listVars,
+                         data = tab,
+                         factorVars = catVars,
+                         includeNA = TRUE)
+
+print(table2)
+```
